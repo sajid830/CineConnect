@@ -1,0 +1,30 @@
+# CineConnect Alembic Database Migrations
+
+This directory contains version-controlled database schema migration scripts.
+
+## Common Migration Commands
+
+### Create a new migration revision
+```bash
+alembic revision --autogenerate -m "create user and profile tables"
+```
+
+### Apply all pending migrations (upgrade to latest)
+```bash
+alembic upgrade head
+```
+
+### Revert the most recent migration
+```bash
+alembic downgrade -1
+```
+
+### View migration history
+```bash
+alembic history --verbose
+```
+
+### Check current database revision
+```bash
+alembic current
+```
