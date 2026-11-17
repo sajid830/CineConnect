@@ -14,8 +14,7 @@ sys.path.insert(0, str(BASE_DIR))
 
 from app.core.config import settings
 from app.db.base import Base
-# Import all ORM models here as they are added so Alembic detects them:
-# from app.models import ...
+import app.models  # Register all models for Alembic autogenerate
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
