@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     # Database
     POSTGRES_USER: str = "cineconnect"
-    POSTGRES_PASSWORD: str = "cineconnect_secret_password_change_me"
+    POSTGRES_PASSWORD: str = "connectcine321"
     POSTGRES_DB: str = "cineconnect_db"
     POSTGRES_HOST: str = "postgres"
     POSTGRES_PORT: int = 5432
@@ -52,11 +52,34 @@ class Settings(BaseSettings):
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 1800
 
+    # Supabase Authentication & JWT
+    SUPABASE_URL: str = "https://your-project.supabase.co"
+    SUPABASE_KEY: str = "your_supabase_anon_key_here"
+    SUPABASE_JWT_SECRET: str = "cineconnect_supabase_jwt_secret_change_me"
+    JWT_ALGORITHM: str = "HS256"
+
+    # Media Storage (MinIO / S3)
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin"
+    MINIO_BUCKET_NAME: str = "cineconnect-media"
+    MINIO_USE_SSL: bool = False
+
+    @property
+    def MINIO_BUCKET(self) -> str:
+        return self.MINIO_BUCKET_NAME
+
+    @property
+    def MINIO_SECURE(self) -> bool:
+        return self.MINIO_USE_SSL
+
+    # Cache & Real-Time Messaging (Redis)
+    REDIS_URL: str = "redis://localhost:6379/0"
+
     @property
     def async_database_url(self) -> str:
         """Returns explicitly set DATABASE_URL or constructs asyncpg PostgreSQL connection URL."""
         if self.DATABASE_URL:
-            # Ensure asyncpg driver is specified if raw postgresql:// is provided
             if self.DATABASE_URL.startswith("postgresql://"):
                 return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
             return self.DATABASE_URL

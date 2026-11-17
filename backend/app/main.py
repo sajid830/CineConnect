@@ -1,11 +1,14 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status
+from typing import Optional
+from fastapi import FastAPI, Request, WebSocket, Query, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.openapi.utils import get_openapi
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.api import api_router
+from app.api.websocket import chat_websocket_endpoint
 from app.core.config import settings
 from app.core.logging import logger
 from app.db.init_db import init_db
@@ -33,13 +36,39 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.APP_NAME,
-    description="CineConnect Core Backend API - High-performance asynchronous foundation.",
+    description="CineConnect Backend API – Enterprise asynchronous platform supporting Talent and Production House interfaces.",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
     lifespan=lifespan,
+    swagger_ui_parameters={"persistAuthorization": True},
 )
+
+# Custom OpenAPI schema to register BearerAuth for Swagger UI
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Enter Supabase JWT token (Bearer token).",
+        }
+    }
+    # Apply security globally or per endpoint
+    openapi_schema["security"] = [{"BearerAuth": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # CORS Middleware
 app.add_middleware(
@@ -103,6 +132,13 @@ async def root_health() -> HealthResponse:
         status="healthy",
         service="cineconnect-backend",
     )
+
+
+# Real-Time Chat WebSocket Endpoint
+@app.websocket("/ws/chat")
+async def websocket_chat_route(websocket: WebSocket, token: Optional[str] = Query(None)):
+    """WebSocket endpoint for real-time direct chat."""
+    await chat_websocket_endpoint(websocket, token)
 
 
 # Include API v1 Router
