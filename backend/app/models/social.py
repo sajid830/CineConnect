@@ -58,7 +58,7 @@ class Interaction(Base):
 
     # Relationships
     post: Mapped["Post"] = relationship("Post", back_populates="interactions")
-    user: Mapped["User"] = relationship("User")
+    user: Mapped["User"] = relationship("User", back_populates="interactions")
 
 
 class Connection(Base):
@@ -117,6 +117,10 @@ class Collaboration(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "talent_id", "role", name="uq_collaboration_project_talent_role"),
     )
 
     # Relationships

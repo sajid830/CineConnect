@@ -66,3 +66,6 @@ class User(Base):
     notifications: Mapped[List["Notification"]] = relationship(
         "Notification", back_populates="user", cascade="all, delete-orphan"
     )
+    interactions: Mapped[List["Interaction"]] = relationship(
+        "Interaction", back_populates="user", cascade="all, delete-orphan"
+    )

@@ -82,14 +82,31 @@ def verify_supabase_jwt(token: str) -> Optional[Dict[str, Any]]:
 
         # Verify signature
         signing_input = f"{header_b64}.{payload_b64}".encode("utf-8")
+        actual_sig = _base64url_decode(signature_b64)
+
+        # Standard check: UTF-8 secret string
         expected_sig = hmac.new(
             settings.SUPABASE_JWT_SECRET.encode("utf-8"),
             signing_input,
             hashlib.sha256,
         ).digest()
-        actual_sig = _base64url_decode(signature_b64)
 
-        if not hmac.compare_digest(expected_sig, actual_sig):
+        sig_valid = hmac.compare_digest(expected_sig, actual_sig)
+
+        # Resilient fallback: base64-decoded secret bytes (standard for Supabase 64-byte base64 secrets)
+        if not sig_valid:
+            try:
+                decoded_secret = base64.b64decode(settings.SUPABASE_JWT_SECRET)
+                fallback_sig = hmac.new(
+                    decoded_secret,
+                    signing_input,
+                    hashlib.sha256,
+                ).digest()
+                sig_valid = hmac.compare_digest(fallback_sig, actual_sig)
+            except Exception:
+                sig_valid = False
+
+        if not sig_valid:
             logger.warning("JWT signature verification failed.")
             return None
 

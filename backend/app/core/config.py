@@ -1,14 +1,22 @@
 import os
+from pathlib import Path
 from typing import List, Union
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+_ROOT_DIR = _BACKEND_DIR.parent
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables and .env file."""
 
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env"),
+        env_file=(
+            str(_BACKEND_DIR / ".env"),
+            str(_ROOT_DIR / ".env"),
+            ".env",
+            "../.env",
+        ),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=True,
@@ -55,8 +63,13 @@ class Settings(BaseSettings):
     # Supabase Authentication & JWT
     SUPABASE_URL: str = "https://your-project.supabase.co"
     SUPABASE_KEY: str = "your_supabase_anon_key_here"
+    SUPABASE_ANON_KEY: Union[str, None] = None
     SUPABASE_JWT_SECRET: str = "cineconnect_supabase_jwt_secret_change_me"
     JWT_ALGORITHM: str = "HS256"
+
+    @property
+    def anon_key(self) -> str:
+        return self.SUPABASE_ANON_KEY or self.SUPABASE_KEY
 
     # Media Storage (MinIO / S3)
     MINIO_ENDPOINT: str = "localhost:9000"
