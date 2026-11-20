@@ -34,6 +34,38 @@ services:
       - cineconnect_network
 
   # ============================================================================
+  # MinIO High-Performance Object Storage Service
+  # ============================================================================
+  minio:
+    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2026-11-16T00-11-40Z}
+    container_name: cineconnect-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+
+    volumes:
+      - minio_data:/data
+
+    ports:
+      # S3 API port
+      - "${MINIO_PORT:-9000}:9000"
+      # Web Console port
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live >/dev/null 2>&1 || (exec 3<>/dev/tcp/localhost/9000 && printf 'GET /minio/health/live HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && read -r status <&3 && [[ \"$$status\" =~ 200 ]]) || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    networks:
+      - cineconnect_network
+
+  # ============================================================================
   # FastAPI Asynchronous Backend Service
   # ============================================================================
   backend:
@@ -46,6 +78,8 @@ services:
 
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
     env_file:
@@ -67,6 +101,10 @@ services:
 
       # FastAPI connects using Docker's internal service hostname.
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cineconnect}:${POSTGRES_PASSWORD:-connectcine321}@postgres:5432/${POSTGRES_DB:-cineconnect_db}
+
+      # MinIO internal container communication (backend -> minio container)
+      MINIO_INTERNAL_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:9000}
 
       DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
@@ -92,6 +130,8 @@ services:
 volumes:
   postgres_data:
     name: cineconnect_postgres_data
+  minio_data:
+    name: cineconnect_minio_data
 
 # ==============================================================================
 # Docker Network

@@ -34,12 +34,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
-
-# Keep Flutter application source tracked
-!mobile/lib/
-!mobile/lib/**
+backend/lib/
+backend/lib64/
 parts/
 sdist/
 var/

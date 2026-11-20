@@ -35,6 +35,8 @@ async def update_my_profile(
     current_user.phone = data.phone
     if data.experience_years is not None:
         current_user.experience_years = data.experience_years
+    if data.skills is not None:
+        current_user.skills = data.skills
 
     await db.commit()
     await db.refresh(current_user)

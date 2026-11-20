@@ -26,5 +26,7 @@ class ProductionHouseResponse(ProductionHouseBase):
 
     id: UUID
     user_id: UUID
+    email: Optional[str] = None
+    is_verified: bool = False
     created_at: datetime
     updated_at: datetime

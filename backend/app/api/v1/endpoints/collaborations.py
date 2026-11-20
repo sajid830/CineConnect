@@ -1,7 +1,7 @@
 import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -16,6 +16,14 @@ from app.schemas.collaboration import (
 )
 
 router = APIRouter()
+
+
+def to_ph_collaboration_response(collab: Collaboration) -> CollaborationResponse:
+    """Translates canonical database 'rejected' status to Production House 'declined' status."""
+    res = CollaborationResponse.model_validate(collab)
+    if res.status == "rejected":
+        res.status = "declined"
+    return res
 
 
 @router.post("/", response_model=CollaborationResponse, status_code=status.HTTP_201_CREATED)
@@ -44,23 +52,44 @@ async def create_collaboration(
             detail="Project not found or does not belong to your production house.",
         )
 
-    # 3. Verify target talent exists
+    # 3. Verify target talent exists and is a talent account
     talent_res = await db.execute(select(User).where(User.id == collab_in.talent_id))
-    if not talent_res.scalar_one_or_none():
+    target_talent = talent_res.scalar_one_or_none()
+    if not target_talent:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent user not found")
+    if target_talent.account_type != "talent":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Target user is not a talent account. Collaborations can only be initiated with Talent users.",
+        )
 
     # 4. Check existing collaboration for this project & talent
-    existing = await db.execute(
+    existing_res = await db.execute(
         select(Collaboration).where(
             Collaboration.project_id == collab_in.project_id,
             Collaboration.talent_id == collab_in.talent_id,
         )
     )
-    if existing.scalar_one_or_none():
+    existing_collabs = existing_res.scalars().all()
+
+    # Active or accepted collaborations must not be duplicated
+    active_collab = next((c for c in existing_collabs if c.status in ("invited", "accepted", "completed")), None)
+    if active_collab:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A collaboration invitation or record already exists for this talent on this project.",
+            detail="An active collaboration invitation or record already exists for this talent on this project.",
         )
+
+    # If there is a previously declined/rejected/cancelled invitation, allow re-invitation by updating it
+    inactive_collab = next((c for c in existing_collabs if c.status in ("rejected", "declined", "cancelled")), None)
+    if inactive_collab:
+        inactive_collab.status = "invited"
+        inactive_collab.role = collab_in.role
+        inactive_collab.invited_at = func.now()
+        await db.commit()
+        await db.refresh(inactive_collab)
+        inactive_collab.talent = target_talent
+        return to_ph_collaboration_response(inactive_collab)
 
     collaboration = Collaboration(
         project_id=collab_in.project_id,
@@ -71,7 +100,8 @@ async def create_collaboration(
     db.add(collaboration)
     await db.commit()
     await db.refresh(collaboration)
-    return collaboration
+    collaboration.talent = target_talent
+    return to_ph_collaboration_response(collaboration)
 
 
 @router.get("/my", response_model=List[CollaborationResponse])
@@ -83,7 +113,7 @@ async def list_my_collaborations(
 ):
     """List collaborations associated with the current user (either as talent or as project owner)."""
     # If user is a talent
-    if current_user.role == "talent":
+    if current_user.account_type == "talent":
         stmt = (
             select(Collaboration)
             .where(Collaboration.talent_id == current_user.id)
@@ -107,7 +137,8 @@ async def list_my_collaborations(
             .limit(limit)
         )
         result = await db.execute(stmt)
-        return result.scalars().all()
+        collabs = result.scalars().all()
+        return [to_ph_collaboration_response(c) for c in collabs]
 
     return []
 
@@ -134,7 +165,7 @@ async def get_collaboration(
         ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == project.production_house_id))
         ph = ph_res.scalar_one_or_none()
         if ph and ph.user_id == current_user.id:
-            return collab
+            return to_ph_collaboration_response(collab)
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view this collaboration.")
 
@@ -162,6 +193,7 @@ async def accept_collaboration(
     collab.status = "accepted"
     await db.commit()
     await db.refresh(collab)
+    collab.talent = current_user
     return collab
 
 
@@ -188,6 +220,7 @@ async def reject_collaboration(
     collab.status = "rejected"
     await db.commit()
     await db.refresh(collab)
+    collab.talent = current_user
     return collab
 
 
@@ -221,10 +254,17 @@ async def update_collaboration_status(
             detail="You do not have permission to manage this collaboration.",
         )
 
-    collab.status = status_in.status
+    # Accept 'declined' as an alias and normalize to database canonical 'rejected'
+    new_status = status_in.status.lower()
+    if new_status == "declined":
+        new_status = "rejected"
+
+    collab.status = new_status
     await db.commit()
     await db.refresh(collab)
-    return collab
+    talent_res = await db.execute(select(User).where(User.id == collab.talent_id))
+    collab.talent = talent_res.scalar_one_or_none()
+    return to_ph_collaboration_response(collab)
 
 
 @router.delete("/{collaboration_id}", status_code=status.HTTP_204_NO_CONTENT)

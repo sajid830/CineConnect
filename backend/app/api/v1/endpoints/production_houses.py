@@ -16,6 +16,11 @@ from app.schemas.production_house import (
 )
 from app.schemas.project import ProjectResponse
 from app.schemas.opportunity import OpportunityResponse
+from app.services.storage import (
+    acquire_public_media_advisory_locks,
+    validate_public_media_ownership,
+    cleanup_unreferenced_public_media,
+)
 
 router = APIRouter()
 
@@ -34,6 +39,16 @@ async def create_production_house(
             detail="Production house profile already exists for this account.",
         )
 
+    # Protect logo attachment if provided
+    if data.logo_url:
+        await acquire_public_media_advisory_locks(db, [data.logo_url])
+        validate_public_media_ownership(
+            url_or_key=data.logo_url,
+            user_id=current_user.id,
+            field_name="logo_url",
+            verify_exists=True,
+        )
+
     # Ensure user account_type is production_house
     current_user.account_type = "production_house"
 
@@ -49,6 +64,7 @@ async def create_production_house(
     db.add(house)
     await db.commit()
     await db.refresh(house)
+    house.user = current_user
     return house
 
 
@@ -62,6 +78,7 @@ async def get_my_production_house(
     house = result.scalar_one_or_none()
     if not house:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Production house profile not created yet.")
+    house.user = current_user
     return house
 
 
@@ -77,6 +94,17 @@ async def update_my_production_house(
     if not house:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Production house profile not found.")
 
+    old_logo_url = house.logo_url
+
+    if data.logo_url and data.logo_url != old_logo_url:
+        await acquire_public_media_advisory_locks(db, [data.logo_url])
+        validate_public_media_ownership(
+            url_or_key=data.logo_url,
+            user_id=current_user.id,
+            field_name="logo_url",
+            verify_exists=True,
+        )
+
     house.company_name = data.company_name
     house.description = data.description
     house.location = data.location
@@ -86,6 +114,11 @@ async def update_my_production_house(
 
     await db.commit()
     await db.refresh(house)
+    house.user = current_user
+
+    if old_logo_url and old_logo_url != data.logo_url:
+        await cleanup_unreferenced_public_media(db=db, urls_to_check=[old_logo_url])
+
     return house
 
 

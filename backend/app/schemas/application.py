@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
+from app.schemas.user import TalentSummaryResponse
 
 
 class ApplicationBase(BaseModel):
@@ -33,5 +34,15 @@ class ApplicationResponse(ApplicationBase):
     opportunity_id: UUID
     talent_id: UUID
     status: str
+    applied_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    talent: Optional[TalentSummaryResponse] = None
+
+
+class ApplicationDownloadUrlResponse(BaseModel):
+    """Temporary authorized presigned download URL for private application documents."""
+    download_url: str = Field(..., description="Temporary presigned GET download URL signed with AWS SigV4")
+    file_key: str = Field(..., description="Normalized storage object key")
+    file_type: str = Field(..., description="Document type: 'resume' or 'reel'")
+    expires_in_seconds: int = Field(3600, description="Time until presigned download URL expires")

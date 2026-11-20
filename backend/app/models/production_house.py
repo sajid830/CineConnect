@@ -15,7 +15,7 @@ class ProductionHouse(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True
     )
     company_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -30,15 +30,30 @@ class ProductionHouse(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="production_house")
+    user: Mapped["User"] = relationship("User", back_populates="production_house", lazy="joined")
     projects: Mapped[List["Project"]] = relationship(
         "Project", back_populates="production_house", cascade="all, delete-orphan"
     )
     opportunities: Mapped[List["Opportunity"]] = relationship(
         "Opportunity", back_populates="production_house", cascade="all, delete-orphan"
     )
+
+    @property
+    def email(self) -> Optional[str]:
+        if "user" in self.__dict__ and self.user:
+            return self.user.email
+        return None
+
+    @property
+    def is_verified(self) -> bool:
+        if "user" in self.__dict__ and self.user:
+            return self.user.is_verified
+        return False
 
 
 class Project(Base):
@@ -54,7 +69,7 @@ class Project(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
-        String(50), default="development", nullable=False
+        String(50), default="development", nullable=False, index=True
     )  # development, pre_production, production, post_production, completed
     genre: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
@@ -66,6 +81,9 @@ class Project(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     # Relationships

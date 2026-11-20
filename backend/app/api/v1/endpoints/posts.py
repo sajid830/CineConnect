@@ -10,6 +10,11 @@ from app.models.user import User
 from app.models.social import Post, Interaction
 from app.schemas.post import PostCreate, PostUpdate, PostResponse
 from app.schemas.interaction import InteractionResponse, InteractionPatch
+from app.services.storage import (
+    acquire_public_media_advisory_locks,
+    validate_public_media_ownership,
+    cleanup_unreferenced_public_media,
+)
 
 router = APIRouter()
 
@@ -21,6 +26,15 @@ async def create_post(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new feed post."""
+    if post_in.media_url:
+        await acquire_public_media_advisory_locks(db, [post_in.media_url])
+        validate_public_media_ownership(
+            url_or_key=post_in.media_url,
+            user_id=current_user.id,
+            field_name="media_url",
+            verify_exists=True,
+        )
+
     post = Post(
         user_id=current_user.id,
         caption=post_in.caption,
@@ -97,11 +111,26 @@ async def update_post(
             detail="Post not found or you do not have permission to edit it.",
         )
 
+    old_media_url = post.media_url
+
+    if post_in.media_url and post_in.media_url != old_media_url:
+        await acquire_public_media_advisory_locks(db, [post_in.media_url])
+        validate_public_media_ownership(
+            url_or_key=post_in.media_url,
+            user_id=current_user.id,
+            field_name="media_url",
+            verify_exists=True,
+        )
+
     for field, value in post_in.model_dump().items():
         setattr(post, field, value)
 
     await db.commit()
     await db.refresh(post)
+
+    if old_media_url and old_media_url != post_in.media_url:
+        await cleanup_unreferenced_public_media(db=db, urls_to_check=[old_media_url])
+
     return post
 
 
@@ -125,8 +154,14 @@ async def delete_post(
             detail="Post not found or you do not have permission to delete it.",
         )
 
+    old_media_url = post.media_url
+
     await db.delete(post)
     await db.commit()
+
+    if old_media_url:
+        await cleanup_unreferenced_public_media(db=db, urls_to_check=[old_media_url])
+
     return None
 
 
