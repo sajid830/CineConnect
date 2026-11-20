@@ -1,30 +1,36 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-
-import 'package:cineconnect_production/main.dart';
+import 'package:cineconnect_production/core/utils/formatters.dart';
+import 'package:cineconnect_production/shared/widgets/empty_state.dart';
+import 'package:cineconnect_production/shared/widgets/status_pill.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('EmptyState shows message and runs its action', (tester) async {
+    var tapped = false;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: EmptyState(
+          message: 'Nothing here',
+          actionLabel: 'Create',
+          onAction: () => tapped = true,
+        ),
+      ),
+    ));
+    expect(find.text('Nothing here'), findsOneWidget);
+    await tester.tap(find.text('Create'));
+    expect(tapped, isTrue);
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  testWidgets('StatusPill shows its label', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: StatusPill(label: 'Open', color: Color(0xFFD4AF37)),
+      ),
+    ));
+    expect(find.text('Open'), findsOneWidget);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('formatDate gives day, short month, year', () {
+    expect(formatDate(DateTime(2027, 1, 15)), '15 Jan 2027');
   });
 }
