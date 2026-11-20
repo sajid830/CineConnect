@@ -34,8 +34,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-# lib/ (Note: Flutter source is in lib/)
-lib64/
+backend/lib/
+backend/lib64/
 parts/
 sdist/
 var/

@@ -12,9 +12,12 @@ alembic==1.13.3
 
 # Utilities & Configuration
 python-dotenv==1.0.1
+boto3==1.44.5
 
 # Testing & Quality
 pytest==8.3.3
 pytest-asyncio==0.24.0
 httpx==0.27.2
 aiosqlite==0.20.0
+pyjwt[crypto]>=2.9.0
+
