@@ -57,7 +57,7 @@ async def chat_websocket_endpoint(websocket: WebSocket, token: str = None):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    payload = verify_supabase_jwt(token)
+    payload = await verify_supabase_jwt(token)
     if not payload:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return

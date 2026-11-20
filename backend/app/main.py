@@ -21,6 +21,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} in '{settings.APP_ENV}' environment...")
     logger.info(f"Configured CORS origins: {settings.CORS_ORIGINS}")
 
+    # Production JWT configuration validation
+    settings.validate_production_jwt_config()
+
     # Database connectivity verification
     db_connected = await init_db()
     if not db_connected:
@@ -37,6 +40,13 @@ async def lifespan(app: FastAPI):
         logger.warning(f"MinIO bucket initialization deferred: {e}")
 
     yield
+
+    # Clean up asynchronous HTTP client on shutdown
+    try:
+        from app.core.security import jwk_manager
+        await jwk_manager.aclose()
+    except Exception as e:
+        logger.warning(f"Error closing JWK manager client: {e}")
 
     logger.info(f"Shutting down {settings.APP_NAME}...")
 
