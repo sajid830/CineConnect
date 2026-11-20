@@ -13,6 +13,11 @@ from app.schemas.portfolio import (
     PortfolioMediaUpdate,
     PortfolioMediaResponse,
 )
+from app.services.storage import (
+    acquire_public_media_advisory_locks,
+    validate_public_media_ownership,
+    cleanup_unreferenced_public_media,
+)
 
 router = APIRouter()
 
@@ -24,6 +29,26 @@ async def create_portfolio_item(
     db: AsyncSession = Depends(get_db),
 ):
     """Add a new media asset (video, headshot, reel, audio) to talent portfolio."""
+    candidate_media = [item_in.media_url, item_in.thumbnail_url]
+    await acquire_public_media_advisory_locks(db, candidate_media)
+
+    checked_keys = set()
+    validate_public_media_ownership(
+        url_or_key=item_in.media_url,
+        user_id=current_user.id,
+        field_name="media_url",
+        verify_exists=True,
+        checked_keys=checked_keys,
+    )
+    if item_in.thumbnail_url:
+        validate_public_media_ownership(
+            url_or_key=item_in.thumbnail_url,
+            user_id=current_user.id,
+            field_name="thumbnail_url",
+            verify_exists=True,
+            checked_keys=checked_keys,
+        )
+
     media = PortfolioMedia(
         user_id=current_user.id,
         title=item_in.title,
@@ -83,11 +108,45 @@ async def update_portfolio_item(
             detail="Portfolio item not found or you do not have permission to edit it.",
         )
 
+    old_media_url = media.media_url
+    old_thumb_url = media.thumbnail_url
+
+    candidate_new_media = [item_in.media_url, item_in.thumbnail_url]
+    await acquire_public_media_advisory_locks(db, candidate_new_media)
+
+    checked_keys = set()
+    validate_public_media_ownership(
+        url_or_key=item_in.media_url,
+        user_id=current_user.id,
+        field_name="media_url",
+        verify_exists=True,
+        checked_keys=checked_keys,
+    )
+    if item_in.thumbnail_url:
+        validate_public_media_ownership(
+            url_or_key=item_in.thumbnail_url,
+            user_id=current_user.id,
+            field_name="thumbnail_url",
+            verify_exists=True,
+            checked_keys=checked_keys,
+        )
+
     for field, value in item_in.model_dump().items():
         setattr(media, field, value)
 
     await db.commit()
     await db.refresh(media)
+
+    # Clean up replaced or cleared old media files
+    urls_to_cleanup = []
+    if old_media_url and old_media_url != item_in.media_url:
+        urls_to_cleanup.append(old_media_url)
+    if old_thumb_url and old_thumb_url != item_in.thumbnail_url:
+        urls_to_cleanup.append(old_thumb_url)
+
+    if urls_to_cleanup:
+        await cleanup_unreferenced_public_media(db=db, urls_to_check=urls_to_cleanup)
+
     return media
 
 
@@ -111,6 +170,15 @@ async def delete_portfolio_item(
             detail="Portfolio item not found or you do not have permission to delete it.",
         )
 
+    old_media_url = media.media_url
+    old_thumb_url = media.thumbnail_url
+
     await db.delete(media)
     await db.commit()
+
+    # Clean up unreferenced media files from public storage
+    urls_to_cleanup = [u for u in [old_media_url, old_thumb_url] if u]
+    if urls_to_cleanup:
+        await cleanup_unreferenced_public_media(db=db, urls_to_check=urls_to_cleanup)
+
     return None

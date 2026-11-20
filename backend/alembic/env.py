@@ -1,5 +1,6 @@
 import asyncio
 from logging.config import fileConfig
+import os
 import sys
 from pathlib import Path
 
@@ -27,13 +28,22 @@ if config.config_file_name is not None:
 # Set target metadata for 'autogenerate' support
 target_metadata = Base.metadata
 
-# Override sqlalchemy.url with dynamic environment configuration
-config.set_main_option("sqlalchemy.url", settings.async_database_url)
+
+def get_target_url() -> str:
+    """Returns database URL based on environment or -x db=test argument."""
+    try:
+        x_args = context.get_x_argument(as_dictionary=True)
+        if x_args.get("db") == "test" or os.getenv("ALEMBIC_DB") == "test":
+            return settings.async_test_database_url
+    except Exception:
+        if os.getenv("ALEMBIC_DB") == "test":
+            return settings.async_test_database_url
+    return settings.async_database_url
 
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = config.get_main_option("sqlalchemy.url")
+    url = get_target_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -60,7 +70,7 @@ def do_run_migrations(connection: Connection) -> None:
 async def run_async_migrations() -> None:
     """Creates an async engine and executes migrations."""
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = settings.async_database_url
+    configuration["sqlalchemy.url"] = get_target_url()
 
     connectable = async_engine_from_config(
         configuration,

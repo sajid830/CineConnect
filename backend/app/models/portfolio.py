@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import String, Text, DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 from app.db.base import Base
 
 
@@ -14,7 +14,7 @@ class PortfolioMedia(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
+    talent_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -26,6 +26,13 @@ class PortfolioMedia(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Alias user_id for backward compatibility with existing API endpoints
+    user_id = synonym("talent_id")
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="portfolio_items")
+    talent: Mapped["User"] = relationship("User", foreign_keys=[talent_id], back_populates="portfolio_items")
+    user = synonym("talent")

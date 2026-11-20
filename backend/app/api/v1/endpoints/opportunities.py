@@ -17,6 +17,7 @@ from app.schemas.opportunity import (
     OpportunityResponse,
 )
 from app.schemas.application import ApplicationResponse
+from app.api.v1.endpoints.applications import to_ph_application_response
 
 router = APIRouter()
 
@@ -280,7 +281,8 @@ async def list_opportunity_applications(
 
     stmt = select(Application).where(Application.opportunity_id == opportunity_id).order_by(Application.created_at.desc())
     app_result = await db.execute(stmt)
-    return app_result.scalars().all()
+    apps = app_result.scalars().all()
+    return [to_ph_application_response(a) for a in apps]
 
 
 @router.patch("/{opportunity_id}/status", response_model=OpportunityResponse)

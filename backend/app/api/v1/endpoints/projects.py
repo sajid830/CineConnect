@@ -13,6 +13,7 @@ from app.models.social import Collaboration
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectPatch, ProjectResponse
 from app.schemas.opportunity import OpportunityResponse
 from app.schemas.collaboration import CollaborationResponse
+from app.api.v1.endpoints.collaborations import to_ph_collaboration_response
 
 router = APIRouter()
 
@@ -198,4 +199,5 @@ async def get_project_opportunities(project_id: UUID, db: AsyncSession = Depends
 async def get_project_collaborations(project_id: UUID, db: AsyncSession = Depends(get_db)):
     stmt = select(Collaboration).where(Collaboration.project_id == project_id).order_by(Collaboration.created_at.desc())
     result = await db.execute(stmt)
-    return result.scalars().all()
+    collabs = result.scalars().all()
+    return [to_ph_collaboration_response(c) for c in collabs]

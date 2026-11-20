@@ -29,6 +29,13 @@ async def lifespan(app: FastAPI):
             "Database connectivity will be re-attempted on request."
         )
 
+    # Storage buckets initialization (non-blocking if MinIO is not running)
+    try:
+        from app.services.storage import init_storage_buckets
+        init_storage_buckets()
+    except Exception as e:
+        logger.warning(f"MinIO bucket initialization deferred: {e}")
+
     yield
 
     logger.info(f"Shutting down {settings.APP_NAME}...")

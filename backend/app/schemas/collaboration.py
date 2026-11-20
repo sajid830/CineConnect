@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
+from app.schemas.user import TalentSummaryResponse
 
 
 class CollaborationCreate(BaseModel):
@@ -20,7 +21,9 @@ class CollaborationResponse(BaseModel):
     id: UUID
     project_id: UUID
     talent_id: UUID
-    role: Optional[str]
+    role: Optional[str] = None
     status: str
+    invited_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    talent: Optional[TalentSummaryResponse] = None

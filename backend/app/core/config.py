@@ -1,5 +1,5 @@
 import os
-from typing import List, Union
+from typing import List, Union, Optional
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -42,9 +42,11 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "cineconnect"
     POSTGRES_PASSWORD: str = "connectcine321"
     POSTGRES_DB: str = "cineconnect_db"
+    POSTGRES_TEST_DB: str = "cineconnect_test_db"
     POSTGRES_HOST: str = "postgres"
     POSTGRES_PORT: int = 5432
     DATABASE_URL: Union[str, None] = None
+    TEST_DATABASE_URL: Union[str, None] = None
 
     # Connection Pool Settings
     DB_POOL_SIZE: int = 10
@@ -60,14 +62,37 @@ class Settings(BaseSettings):
 
     # Media Storage (MinIO / S3)
     MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_INTERNAL_ENDPOINT: Optional[str] = None
+    MINIO_PUBLIC_ENDPOINT: Optional[str] = None
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
-    MINIO_BUCKET_NAME: str = "cineconnect-media"
+    MINIO_REGION: str = "us-east-1"
+    MINIO_BUCKET_NAME: str = "cineconnect-public"
+    MINIO_PUBLIC_BUCKET: str = "cineconnect-public"
+    MINIO_PRIVATE_BUCKET: str = "cineconnect-private"
     MINIO_USE_SSL: bool = False
 
     @property
+    def internal_storage_endpoint(self) -> str:
+        """Internal endpoint used for backend server-to-MinIO communication."""
+        endpoint = (self.MINIO_INTERNAL_ENDPOINT or "").strip() or self.MINIO_ENDPOINT
+        if not endpoint.startswith("http://") and not endpoint.startswith("https://"):
+            protocol = "https" if self.MINIO_USE_SSL else "http"
+            return f"{protocol}://{endpoint}"
+        return endpoint
+
+    @property
+    def public_storage_endpoint(self) -> str:
+        """Client-reachable public endpoint for mobile/browser uploads and media URLs."""
+        endpoint = (self.MINIO_PUBLIC_ENDPOINT or "").strip() or self.MINIO_ENDPOINT
+        if not endpoint.startswith("http://") and not endpoint.startswith("https://"):
+            protocol = "https" if self.MINIO_USE_SSL else "http"
+            return f"{protocol}://{endpoint}"
+        return endpoint
+
+    @property
     def MINIO_BUCKET(self) -> str:
-        return self.MINIO_BUCKET_NAME
+        return self.MINIO_PUBLIC_BUCKET or self.MINIO_BUCKET_NAME
 
     @property
     def MINIO_SECURE(self) -> bool:
@@ -87,6 +112,21 @@ class Settings(BaseSettings):
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
+
+    @property
+    def async_test_database_url(self) -> str:
+        """Returns explicitly set TEST_DATABASE_URL or constructs asyncpg connection URL for test DB."""
+        if self.TEST_DATABASE_URL:
+            if self.TEST_DATABASE_URL.startswith("postgresql://"):
+                return self.TEST_DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return self.TEST_DATABASE_URL
+
+        host = "localhost" if self.POSTGRES_HOST == "postgres" else self.POSTGRES_HOST
+        port = 5433 if host == "localhost" else self.POSTGRES_PORT
+        return (
+            f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{host}:{port}/{self.POSTGRES_TEST_DB}"
         )
 
     @property

@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional, List
 from sqlalchemy import String, Text, DateTime, ForeignKey, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 from app.db.base import Base
 
 
@@ -25,6 +25,9 @@ class Post(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     # Relationships
@@ -68,10 +71,10 @@ class Connection(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    sender_id: Mapped[uuid.UUID] = mapped_column(
+    follower_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    receiver_id: Mapped[uuid.UUID] = mapped_column(
+    following_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     status: Mapped[str] = mapped_column(
@@ -84,14 +87,23 @@ class Connection(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Aliases for backwards compatibility with sender/receiver terminology
+    sender_id = synonym("follower_id")
+    receiver_id = synonym("following_id")
 
     __table_args__ = (
-        UniqueConstraint("sender_id", "receiver_id", name="uq_connection_sender_receiver"),
+        UniqueConstraint("follower_id", "following_id", name="uq_connection_follower_following"),
     )
 
     # Relationships
-    sender: Mapped["User"] = relationship("User", foreign_keys=[sender_id], back_populates="sent_connections")
-    receiver: Mapped["User"] = relationship("User", foreign_keys=[receiver_id], back_populates="received_connections")
+    follower: Mapped["User"] = relationship("User", foreign_keys=[follower_id], back_populates="following_connections")
+    following: Mapped["User"] = relationship("User", foreign_keys=[following_id], back_populates="follower_connections")
+    sender = synonym("follower")
+    receiver = synonym("following")
 
 
 class Collaboration(Base):
@@ -112,13 +124,20 @@ class Collaboration(Base):
         String(50), default="invited", nullable=False, index=True
     )  # 'invited', 'accepted', 'rejected', 'completed', 'cancelled'
 
-    created_at: Mapped[datetime] = mapped_column(
+    invited_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Alias created_at to invited_at for backward compatibility with existing API endpoints
+    created_at = synonym("invited_at")
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="collaborations")
-    talent: Mapped["User"] = relationship("User", back_populates="collaborations")
+    talent: Mapped["User"] = relationship("User", back_populates="collaborations", lazy="selectin")
+    messages: Mapped[List["Message"]] = relationship("Message", back_populates="collaboration", cascade="all, delete-orphan")

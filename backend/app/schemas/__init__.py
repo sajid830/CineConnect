@@ -20,6 +20,7 @@ from app.schemas.application import (
     ApplicationPatch,
     ApplicationStatusUpdate,
     ApplicationResponse,
+    ApplicationDownloadUrlResponse,
 )
 from app.schemas.portfolio import PortfolioMediaCreate, PortfolioMediaUpdate, PortfolioMediaResponse
 from app.schemas.post import PostCreate, PostUpdate, PostResponse
@@ -58,6 +59,7 @@ __all__ = [
     "ApplicationPatch",
     "ApplicationStatusUpdate",
     "ApplicationResponse",
+    "ApplicationDownloadUrlResponse",
     "PortfolioMediaCreate",
     "PortfolioMediaUpdate",
     "PortfolioMediaResponse",
