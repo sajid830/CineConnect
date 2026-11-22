@@ -28,7 +28,7 @@ router = APIRouter()
 @router.post("", response_model=ProductionHouseResponse, status_code=status.HTTP_201_CREATED, summary="Create Production House Profile")
 async def create_production_house(
     data: ProductionHouseCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_production_house),
     db: AsyncSession = Depends(get_db),
 ):
     # Check if user already has a production house
@@ -48,9 +48,6 @@ async def create_production_house(
             field_name="logo_url",
             verify_exists=True,
         )
-
-    # Ensure user account_type is production_house
-    current_user.account_type = "production_house"
 
     house = ProductionHouse(
         user_id=current_user.id,

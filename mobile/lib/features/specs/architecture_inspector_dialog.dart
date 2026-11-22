@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 
 class ArchitectureInspectorDialog extends StatefulWidget {
   const ArchitectureInspectorDialog({super.key});
@@ -36,7 +36,7 @@ class _ArchitectureInspectorDialogState extends State<ArchitectureInspectorDialo
             border: Border.all(color: CineColors.gold, width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: CineColors.gold.withOpacity(0.2),
+                color: CineColors.gold.withValues(alpha: 0.2),
                 blurRadius: 30,
               ),
             ],

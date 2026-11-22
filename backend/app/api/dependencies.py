@@ -88,9 +88,42 @@ async def get_current_user(
         )
 
     metadata = payload.get("user_metadata", {}) or {}
-    raw_account_type = metadata.get("account_type", "talent")
-    # Only 'talent' and 'production_house' allowed as public account types; any other (including 'admin') defaults to 'talent'
-    account_type = raw_account_type if raw_account_type in ("talent", "production_house") else "talent"
+    raw_account_type = metadata.get("account_type")
+
+    # Safe backward compatibility: check legacy 'role' claim if account_type is omitted
+    if not raw_account_type or not isinstance(raw_account_type, str) or not raw_account_type.strip():
+        legacy_role = metadata.get("role")
+        if isinstance(legacy_role, str) and legacy_role.strip().lower() in (
+            "production",
+            "production_house",
+            "production_hub",
+        ):
+            raw_account_type = "production_house"
+        else:
+            raw_account_type = "talent"
+
+    normalized_type = raw_account_type.strip().lower()
+
+    # Canonical validation: accept talent and production_house (and normalize legacy 'production')
+    if normalized_type in ("production_house", "production", "production_hub"):
+        # Validate against cross-claim inconsistency: if legacy 'role' exists and conflicts with production_house (e.g. role='talent' or role='user'),
+        # this indicates tampering. Safely fallback to talent.
+        legacy_role = metadata.get("role")
+        if isinstance(legacy_role, str) and legacy_role.strip().lower() in ("talent", "user"):
+            logger.warning(
+                "Suspicious claim mismatch during JIT provisioning for user %s: account_type='%s' but role='%s'. Defaulting to talent.",
+                user_uuid,
+                raw_account_type,
+                legacy_role,
+            )
+            account_type = "talent"
+        else:
+            account_type = "production_house"
+    elif normalized_type in ("talent", "user"):
+        account_type = "talent"
+    else:
+        # Untrusted claims (e.g. self-assigned 'admin') or unrecognized values safely default to 'talent'
+        account_type = "talent"
     full_name = metadata.get("full_name") or metadata.get("name")
 
     logger.info("Synchronizing new Supabase Auth user: %s (%s)", user_uuid, email)

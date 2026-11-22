@@ -6,6 +6,8 @@ import 'app_typography.dart';
 class AppTheme {
   AppTheme._();
 
+  static ThemeData get dark => darkTheme;
+
   /// Dark Theme (Primary aesthetic for CineConnect)
   static ThemeData get darkTheme {
     return ThemeData(

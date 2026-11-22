@@ -1,21 +1,31 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cineconnect/app/theme.dart';
+import 'package:cineconnect/core/auth/password_recovery_client.dart';
 import 'package:cineconnect/core/utils/web_tab_sync.dart';
 import 'auth_screen.dart';
+
+/// Available stages in the password recovery process.
+enum PasswordRecoveryStep {
+  requestOtp,
+  verifyOtp,
+  setNewPassword,
+  success,
+}
 
 class ForgotPasswordScreen extends StatefulWidget {
   final String selectedRole;
   final String? initialEmail;
   final bool isRecoveryMode;
+  final PasswordRecoveryClient? recoveryClient;
 
   const ForgotPasswordScreen({
     super.key,
     this.selectedRole = 'user',
     this.initialEmail,
     this.isRecoveryMode = false,
+    this.recoveryClient,
   });
 
   @override
@@ -24,97 +34,86 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _otpController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
+
+  late PasswordRecoveryClient _recoveryClient;
+  late PasswordRecoveryStep _currentStep;
 
   VoidCallback? _cancelPasswordUpdatedSync;
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
-  bool _resetLinkSent = false;
-  bool _passwordUpdated = false;
-  bool _isNavigatingToSignIn = false;
+  bool _isResending = false;
+  int _resendCooldown = 0;
+  Timer? _cooldownTimer;
+  Timer? _autoRedirectTimer;
   String? _errorMessage;
+  String? _infoMessage;
 
   @override
   void initState() {
     super.initState();
-    final email =
-        widget.initialEmail ?? Supabase.instance.client.auth.currentUser?.email;
+    _recoveryClient = widget.recoveryClient ?? SupabasePasswordRecoveryClient();
+
+    String? currentEmail;
+    try {
+      currentEmail = Supabase.instance.client.auth.currentUser?.email;
+    } catch (_) {
+      currentEmail = null;
+    }
+
+    final email = widget.initialEmail ?? currentEmail;
     if (email != null && email.isNotEmpty) {
       _emailController.text = email;
+    }
+
+    if (widget.isRecoveryMode) {
+      _currentStep = PasswordRecoveryStep.setNewPassword;
+      setPasswordRecoveryInProgress(true);
+    } else {
+      _currentStep = PasswordRecoveryStep.requestOtp;
     }
   }
 
   @override
   void dispose() {
+    _autoRedirectTimer?.cancel();
+    _cooldownTimer?.cancel();
     _cancelPasswordUpdatedSync?.call();
     _emailController.dispose();
+    _otpController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  void _startListeningForPasswordUpdate() {
-    _cancelPasswordUpdatedSync?.call();
-    _cancelPasswordUpdatedSync = listenForPasswordUpdated(() {
-      _handlePasswordUpdatedSuccess();
+  void _startCooldown([int seconds = 60]) {
+    _cooldownTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _resendCooldown = seconds);
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_resendCooldown <= 1) {
+        timer.cancel();
+        setState(() => _resendCooldown = 0);
+      } else {
+        setState(() => _resendCooldown--);
+      }
     });
   }
 
-  Future<void> _handlePasswordUpdatedSuccess() async {
-    if (_isNavigatingToSignIn || !mounted) return;
-    _isNavigatingToSignIn = true;
-
-    clearPasswordUpdatedFlag();
-    clearUrlParams();
-
-    if (!mounted) return;
-    setState(() {
-      _passwordUpdated = true;
-    });
-
-    await Future.delayed(const Duration(milliseconds: 1500));
-    if (!mounted) return;
-
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AuthScreen(
-          selectedRole: widget.selectedRole,
-          initialIsLogin: true,
-          initialEmail: _emailController.text.trim().toLowerCase(),
-          successMessage:
-              'Password updated successfully! Please sign in with your new password.',
-        ),
-      ),
-      (route) => false,
-    );
-  }
-
-  void _navigateToSignIn() {
-    clearUrlParams();
-    if (Navigator.canPop(context)) {
-      Navigator.pop(context);
-    } else {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (_) => AuthScreen(
-            selectedRole: widget.selectedRole,
-            initialIsLogin: true,
-            initialEmail: _emailController.text.trim().toLowerCase(),
-          ),
-        ),
-        (route) => false,
-      );
-    }
-  }
-
-  Future<void> _handleSendResetLink() async {
+  Future<void> _handleRequestOtp() async {
     final email = _emailController.text.trim().toLowerCase();
-    setState(() => _errorMessage = null);
+    setState(() {
+      _errorMessage = null;
+      _infoMessage = null;
+    });
 
     if (email.isEmpty) {
       setState(() => _errorMessage = 'Please enter your email address.');
@@ -127,21 +126,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       return;
     }
 
-    clearPasswordUpdatedFlag();
     setState(() => _isLoading = true);
 
     try {
-      await Supabase.instance.client.auth.resetPasswordForEmail(
-        email,
-        redirectTo: kIsWeb ? '${Uri.base.origin}/?recovery=true' : null,
-      );
-
-      // ONLY set _resetLinkSent = true when call succeeds without error
+      await _recoveryClient.resetPasswordForEmail(email);
       if (mounted) {
+        _startCooldown(60);
         setState(() {
-          _resetLinkSent = true;
+          _currentStep = PasswordRecoveryStep.verifyOtp;
+          _infoMessage =
+              'If an account exists for $email, a password reset link has been sent. Open the link from your email to set a new password.';
         });
-        _startListeningForPasswordUpdate();
       }
     } on AuthException catch (e) {
       if (mounted) {
@@ -149,19 +144,122 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _errorMessage = 'An unexpected error occurred: $e');
+        setState(() =>
+            _errorMessage = 'An unexpected error occurred. Please try again.');
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleVerifyOtp() async {
+    final email = _emailController.text.trim().toLowerCase();
+    final otp = _otpController.text.trim();
+    setState(() {
+      _errorMessage = null;
+      _infoMessage = null;
+    });
+
+    if (otp.isEmpty) {
+      setState(() => _errorMessage = 'Please enter the 6-digit recovery code.');
+      return;
+    }
+
+    if (otp.length != 6 || !RegExp(r'^\d{6}$').hasMatch(otp)) {
+      setState(
+          () => _errorMessage = 'The recovery code must be exactly 6 digits.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    // CRITICAL: Set recovery guard BEFORE awaiting verifyRecoveryOtp
+    // so any authentication event emitted on the stream sees the guard active.
+    setPasswordRecoveryInProgress(true);
+
+    try {
+      final response = await _recoveryClient.verifyRecoveryOtp(
+        email: email,
+        token: otp,
+      );
+
+      final verifiedUser = response.user;
+      if (verifiedUser != null) {
+        await setConfirmedRecoveryUserId(verifiedUser.id);
       }
+
+      if (mounted) {
+        // Success: guard is retained, advance to password stage
+        setState(() {
+          _currentStep = PasswordRecoveryStep.setNewPassword;
+          _infoMessage = null;
+        });
+      }
+    } on AuthException catch (e) {
+      // Failure: safely clear the guard and any identity
+      await clearRecoveryState();
+      if (mounted) {
+        setState(() =>
+            _errorMessage = 'Invalid or expired recovery code: ${e.message}');
+      }
+    } catch (e) {
+      // Failure: safely clear the guard and any identity
+      await clearRecoveryState();
+      if (mounted) {
+        setState(() => _errorMessage =
+            'Verification failed. Please check the code and try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleResendOtp() async {
+    if (_resendCooldown > 0 || _isResending || _isLoading) return;
+    final email = _emailController.text.trim().toLowerCase();
+    setState(() {
+      _isResending = true;
+      _errorMessage = null;
+      _infoMessage = null;
+    });
+
+    try {
+      await _recoveryClient.resetPasswordForEmail(email);
+      if (mounted) {
+        _startCooldown(60);
+        setState(() {
+          _infoMessage =
+              'A fresh 6-digit recovery code has been sent to $email.';
+        });
+      }
+    } on AuthException catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = e.message);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(
+            () => _errorMessage = 'Failed to resend code. Please try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _isResending = false);
     }
   }
 
   Future<void> _handleUpdatePassword() async {
+    if (_isLoading) return; // Prevent repeated button taps / double submission
+
     final newPassword = _newPasswordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
-    setState(() => _errorMessage = null);
+    setState(() {
+      _errorMessage = null;
+      _infoMessage = null;
+    });
+
+    if (newPassword.isEmpty) {
+      setState(() => _errorMessage = 'Please enter a new password.');
+      return;
+    }
 
     if (newPassword.length < 6) {
       setState(
@@ -177,38 +275,32 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await Supabase.instance.client.auth.updateUser(
-        UserAttributes(password: newPassword),
-      );
-      await Supabase.instance.client.auth.signOut();
+      // 1. Update password
+      await _recoveryClient.updatePassword(newPassword);
+
+      // 2. Attempt remote session revocation, but do not fail the user if remote sign-out reports error
+      try {
+        await _recoveryClient.signOut();
+      } catch (signOutError) {
+        debugPrint(
+            'Warning: remote session sign-out failed after password update: $signOutError');
+      }
+
+      // 3. Clear all recovery markers safely regardless of remote revocation status
+      await clearRecoveryState();
       notifyPasswordUpdated();
 
       if (mounted) {
         setState(() {
-          _passwordUpdated = true;
+          _currentStep = PasswordRecoveryStep.success;
         });
       }
 
-      tryCloseTab();
-
-      // If Chrome blocks closing the tab, auto-redirect after 1.5 seconds
-      await Future.delayed(const Duration(milliseconds: 1500));
-      if (mounted) {
-        clearUrlParams();
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (_) => AuthScreen(
-              selectedRole: widget.selectedRole,
-              initialIsLogin: true,
-              initialEmail: _emailController.text.trim().toLowerCase(),
-              successMessage:
-                  'Password updated successfully! Please sign in with your new password.',
-            ),
-          ),
-          (route) => false,
-        );
-      }
+      _autoRedirectTimer = Timer(const Duration(milliseconds: 1500), () {
+        if (mounted && _currentStep == PasswordRecoveryStep.success) {
+          _navigateToSignInWithSuccess();
+        }
+      });
     } on AuthException catch (e) {
       if (mounted) {
         setState(() => _errorMessage = e.message);
@@ -218,8 +310,51 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         setState(() => _errorMessage = 'Failed to update password: $e');
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _navigateToSignInWithSuccess() {
+    clearUrlParams();
+    clearRecoveryState();
+    final email = _emailController.text.trim().toLowerCase();
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AuthScreen(
+          selectedRole: widget.selectedRole,
+          initialIsLogin: true,
+          initialEmail: email,
+          successMessage:
+              'Password updated successfully! Please sign in with your new password.',
+        ),
+      ),
+      (route) => false,
+    );
+  }
+
+  Future<void> _navigateToSignIn() async {
+    clearUrlParams();
+    await clearRecoveryState();
+    try {
+      await _recoveryClient.signOut();
+    } catch (_) {}
+
+    if (mounted) {
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      } else {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AuthScreen(
+              selectedRole: widget.selectedRole,
+              initialIsLogin: true,
+              initialEmail: _emailController.text.trim().toLowerCase(),
+            ),
+          ),
+          (route) => false,
+        );
       }
     }
   }
@@ -243,34 +378,33 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Widget _buildBody() {
-    if (_passwordUpdated) {
-      return _buildSuccessView();
+    switch (_currentStep) {
+      case PasswordRecoveryStep.requestOtp:
+        return _buildStep1RequestView();
+      case PasswordRecoveryStep.verifyOtp:
+        return _buildStep2VerifyOtpView();
+      case PasswordRecoveryStep.setNewPassword:
+        return _buildStep3SetPasswordView();
+      case PasswordRecoveryStep.success:
+        return _buildStep4SuccessView();
     }
-
-    if (widget.isRecoveryMode) {
-      return _buildStep2View();
-    }
-
-    if (_resetLinkSent) {
-      return _buildResetLinkSentCard();
-    }
-
-    return _buildStep1View();
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(
+      {VoidCallback? onBack, String backLabel = 'Back to Sign In'}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         GestureDetector(
-          onTap: _navigateToSignIn,
-          child: const Row(
+          onTap: onBack ?? _navigateToSignIn,
+          child: Row(
             children: [
-              Icon(Icons.arrow_back, color: AppColors.textPrimary, size: 20),
-              SizedBox(width: 8),
+              const Icon(Icons.arrow_back,
+                  color: AppColors.textPrimary, size: 20),
+              const SizedBox(width: 8),
               Text(
-                'Back to Sign In',
-                style: TextStyle(
+                backLabel,
+                style: const TextStyle(
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.w500,
                 ),
@@ -291,40 +425,74 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
   }
 
-  Widget _buildErrorBanner() {
-    if (_errorMessage == null) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20.0),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.error),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.error_outline_rounded,
-                color: AppColors.error, size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                _errorMessage!,
-                style: const TextStyle(
-                  color: AppColors.error,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
+  Widget _buildBanners() {
+    return Column(
+      children: [
+        if (_errorMessage != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20.0),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.error),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded,
+                      color: AppColors.error, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(
+                        color: AppColors.error,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
+          ),
+        if (_infoMessage != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20.0),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded,
+                      color: AppColors.gold, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _infoMessage!,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 
-  Widget _buildStep1View() {
+  // --- Step 1: Request Recovery OTP ---
+  Widget _buildStep1RequestView() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -340,7 +508,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 8),
         const Text(
-          "Enter your email address and we'll send you a link to reset your password.",
+          "Enter your registered email address and we'll send you a password-reset link to choose a new password.",
           style: TextStyle(
             fontSize: 14,
             color: AppColors.textMuted,
@@ -348,7 +516,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
         ),
         const SizedBox(height: 32),
-        _buildErrorBanner(),
+        _buildBanners(),
         _buildInputField(
           controller: _emailController,
           label: 'Email Address',
@@ -357,7 +525,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 32),
         ElevatedButton(
-          onPressed: _isLoading ? null : _handleSendResetLink,
+          onPressed: _isLoading ? null : _handleRequestOtp,
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 16),
             backgroundColor: AppColors.gold,
@@ -378,7 +546,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'Send Reset Link',
+                      'Send Recovery Code',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -395,125 +563,164 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
   }
 
-  Widget _buildResetLinkSentCard() {
+  // --- Step 2: Enter Recovery OTP ---
+  Widget _buildStep2VerifyOtpView() {
     final email = _emailController.text.trim();
 
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: AppColors.gold.withValues(alpha: 0.3),
-              width: 2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.gold.withValues(alpha: 0.15),
-                blurRadius: 32,
-                spreadRadius: 4,
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.mark_email_read_rounded,
-            size: 64,
-            color: AppColors.gold,
-          ),
+        _buildHeader(
+          onBack: () => setState(() {
+            _errorMessage = null;
+            _currentStep = PasswordRecoveryStep.requestOtp;
+          }),
+          backLabel: 'Change Email',
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 32),
         const Text(
-          'Check Your Email',
-          textAlign: TextAlign.center,
+          'Enter Recovery Code',
           style: TextStyle(
-            fontSize: 26,
+            fontSize: 28,
             fontWeight: FontWeight.bold,
             color: AppColors.textPrimary,
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 8),
         RichText(
-          textAlign: TextAlign.center,
           text: TextSpan(
             style: const TextStyle(
-              fontSize: 15,
+              fontSize: 14,
               color: AppColors.textMuted,
               height: 1.5,
             ),
             children: [
-              const TextSpan(text: 'Reset link sent to '),
+              const TextSpan(text: 'We sent a password reset link to '),
               TextSpan(
                 text: email,
                 style: const TextStyle(
                   color: AppColors.gold,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
               const TextSpan(
                 text:
-                    '.\nOpen the link in your email to set your new password — this page will update automatically once your password is changed.',
+                    '. Open the link from your email to reset your password, or enter a 6-digit recovery code below if one was provided.',
               ),
             ],
           ),
         ),
         const SizedBox(height: 32),
-        // Waiting indicator
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: AppColors.gold,
-                ),
+        _buildBanners(),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Recovery Code',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
               ),
-              SizedBox(width: 10),
-              Text(
-                'Waiting for password update...',
-                style: TextStyle(
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _otpController,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 24,
+                letterSpacing: 8.0,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+              decoration: InputDecoration(
+                counterText: '',
+                hintText: '000000',
+                hintStyle: const TextStyle(
                   color: AppColors.textMuted,
-                  fontSize: 13,
+                  letterSpacing: 8.0,
+                ),
+                filled: true,
+                fillColor: AppColors.surface,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.gold),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        const SizedBox(height: 36),
+        const SizedBox(height: 32),
         ElevatedButton(
-          onPressed: _navigateToSignIn,
+          onPressed: _isLoading ? null : _handleVerifyOtp,
           style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 16),
             backgroundColor: AppColors.gold,
-            foregroundColor: Colors.black,
-            minimumSize: const Size.fromHeight(50),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
           ),
-          child: const Text(
-            'Back to Sign In',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          child: _isLoading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.black,
+                  ),
+                )
+              : const Text(
+                  'Verify Code',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
+        ),
+        const SizedBox(height: 24),
+        Center(
+          child: _isResending
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.gold,
+                  ),
+                )
+              : _resendCooldown > 0
+                  ? Text(
+                      'Resend code in ${_resendCooldown}s',
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 14,
+                      ),
+                    )
+                  : TextButton(
+                      onPressed: _isLoading ? null : _handleResendOtp,
+                      child: const Text(
+                        "Didn't receive code? Resend",
+                        style: TextStyle(
+                          color: AppColors.gold,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
         ),
       ],
     );
   }
 
-  Widget _buildStep2View() {
+  // --- Step 3: Set New Password ---
+  Widget _buildStep3SetPasswordView() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -537,8 +744,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
         ),
         const SizedBox(height: 32),
-        _buildErrorBanner(),
-        // 1. Email Address (read-only)
+        _buildBanners(),
         _buildInputField(
           controller: _emailController,
           label: 'Email Address',
@@ -547,7 +753,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           readOnly: true,
         ),
         const SizedBox(height: 20),
-        // 2. New Password
         _buildInputField(
           controller: _newPasswordController,
           label: 'New Password',
@@ -558,7 +763,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               setState(() => _obscureNewPassword = !_obscureNewPassword),
         ),
         const SizedBox(height: 20),
-        // 3. Confirm Password
         _buildInputField(
           controller: _confirmPasswordController,
           label: 'Confirm Password',
@@ -604,11 +808,32 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   ],
                 ),
         ),
+        const SizedBox(height: 16),
+        Center(
+          child: TextButton(
+            onPressed: () async {
+              await clearRecoveryState();
+              setState(() {
+                _errorMessage = null;
+                _infoMessage = null;
+                _currentStep = PasswordRecoveryStep.requestOtp;
+              });
+            },
+            child: const Text(
+              'Session expired? Request fresh code',
+              style: TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildSuccessView() {
+  // --- Step 4: Success View ---
+  Widget _buildStep4SuccessView() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -657,22 +882,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 36),
         ElevatedButton(
-          onPressed: () {
-            clearUrlParams();
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(
-                builder: (_) => AuthScreen(
-                  selectedRole: widget.selectedRole,
-                  initialIsLogin: true,
-                  initialEmail: _emailController.text.trim().toLowerCase(),
-                  successMessage:
-                      'Password updated successfully! Please sign in with your new password.',
-                ),
-              ),
-              (route) => false,
-            );
-          },
+          onPressed: _navigateToSignInWithSuccess,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.gold,
             foregroundColor: Colors.black,

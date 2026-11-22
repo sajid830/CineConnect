@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/state/app_state.dart';
 
@@ -94,7 +94,7 @@ class _TalentAuthModalState extends State<TalentAuthModal> {
             border: Border.all(color: CineColors.gold, width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: CineColors.gold.withOpacity(0.2),
+                color: CineColors.gold.withValues(alpha: 0.2),
                 blurRadius: 30,
               ),
             ],
@@ -322,7 +322,7 @@ class _TalentAuthModalState extends State<TalentAuthModal> {
                       decoration: BoxDecoration(
                         color: CineColors.surfaceElevated,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: CineColors.gold.withOpacity(0.4)),
+                        border: Border.all(color: CineColors.gold.withValues(alpha: 0.4)),
                       ),
                       child: const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

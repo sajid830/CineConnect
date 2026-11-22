@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 import '../../core/state/app_state.dart';
 
 class StoryStatusBar extends StatelessWidget {

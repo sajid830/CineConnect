@@ -3,7 +3,7 @@ import '../../../core/config/env_config.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../shared/models/health_status.dart';
 import '../../../shared/services/health_service.dart';
-import '../../../shared/widgets/cine_button.dart';
+import 'package:cineconnect/shared/widgets/cine_button.dart';
 
 /// CineConnect Foundation Home Screen.
 /// Demonstrates theme, environment configuration, responsive layout,
@@ -17,6 +17,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final HealthService _healthService = HealthService();
+  final EnvConfig _env = EnvConfig.fromEnvironment();
   bool _isCheckingHealth = false;
   HealthStatus? _backendStatus;
   HealthStatus? _dbStatus;
@@ -78,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
               borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
-              EnvConfig.environmentName,
+              _env.environment.name.toUpperCase(),
               style: theme.textTheme.labelMedium?.copyWith(
                 color: colorScheme.primary,
                 fontWeight: FontWeight.w600,
@@ -152,11 +153,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _buildInfoRow('Environment', EnvConfig.environmentName, context),
+                    _buildInfoRow('Environment', _env.environment.name.toUpperCase(), context),
                     const Divider(height: 16),
-                    _buildInfoRow('Base API URL', EnvConfig.apiBaseUrl, context),
+                    _buildInfoRow('Base API URL', _env.apiBaseUrl, context),
                     const Divider(height: 16),
-                    _buildInfoRow('API v1 Endpoint', EnvConfig.apiV1BaseUrl, context),
+                    _buildInfoRow('API v1 Endpoint', '${_env.apiBaseUrl}/api/v1', context),
                   ],
                 ),
               ),

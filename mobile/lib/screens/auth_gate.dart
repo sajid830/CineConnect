@@ -1,16 +1,62 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cineconnect/app/theme.dart';
+import 'package:cineconnect/core/auth/password_recovery_client.dart';
 import 'package:cineconnect/core/utils/web_tab_sync.dart';
-import 'package:cineconnect/features/home/presentation/screens/home_screen.dart';
-import 'auth_screen.dart';
+import 'package:cineconnect/features/talent/presentation/talent_portal_screen.dart';
+import 'package:cineconnect/features/production_house/dashboard/dashboard_screen.dart';
 import 'forgot_password_screen.dart';
 import 'role_selection_screen.dart';
 
+/// Normalized application roles supported by CineConnect.
+enum AuthRole {
+  talent,
+  productionHouse,
+  unrecognized,
+}
+
+/// Normalizes Supabase user metadata into canonical CineConnect roles.
+///
+/// Priority:
+/// 1. `account_type` canonical claim ('talent', 'production_house')
+/// 2. `role` legacy claim ('talent', 'user', 'production', 'production_house', 'production_hub')
+/// Returns [AuthRole.unrecognized] if the role is missing or unknown.
+AuthRole resolveUserAuthRole(Map<String, dynamic>? metadata) {
+  if (metadata == null) return AuthRole.unrecognized;
+
+  final rawRole =
+      (metadata['account_type'] as String?) ?? (metadata['role'] as String?);
+  if (rawRole == null) return AuthRole.unrecognized;
+
+  final normalized = rawRole.toLowerCase().trim();
+  switch (normalized) {
+    case 'talent':
+    case 'user':
+      return AuthRole.talent;
+    case 'production':
+    case 'production_house':
+    case 'production_hub':
+      return AuthRole.productionHouse;
+    default:
+      return AuthRole.unrecognized;
+  }
+}
+
 class AuthGate extends StatefulWidget {
-  const AuthGate({super.key});
+  final Stream<AuthState>? authStream;
+  final Session? initialSession;
+  final PasswordRecoveryClient? recoveryClient;
+  final bool autoCheckHealth;
+
+  const AuthGate({
+    super.key,
+    this.authStream,
+    this.initialSession,
+    this.recoveryClient,
+    this.autoCheckHealth = true,
+  });
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -20,7 +66,7 @@ class _AuthGateState extends State<AuthGate> {
   StreamSubscription<AuthState>? _authSubscription;
   bool _handledConfirmation = false;
   bool _isPasswordRecovery = false;
-  String _confirmedRole = 'user';
+  String _confirmedRole = 'talent';
   String? _confirmedEmail;
 
   bool get _isConfirmedRedirect =>
@@ -32,17 +78,62 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
-    _authSubscription =
-        Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      if (data.event == AuthChangeEvent.passwordRecovery) {
-        if (mounted) setState(() => _isPasswordRecovery = true);
-      } else if (data.event == AuthChangeEvent.signedOut ||
-          data.event == AuthChangeEvent.signedIn) {
-        if (mounted && _isPasswordRecovery) {
-          setState(() => _isPasswordRecovery = false);
-        }
-      }
+    initPasswordRecoveryState().then((_) {
+      if (mounted) setState(() {});
     });
+
+    _subscribeToAuthStream();
+  }
+
+  void _subscribeToAuthStream() {
+    _authSubscription?.cancel();
+
+    Stream<AuthState>? stream = widget.authStream;
+    if (stream == null) {
+      try {
+        stream = Supabase.instance.client.auth.onAuthStateChange;
+      } catch (_) {
+        stream = null;
+      }
+    }
+
+    if (stream != null) {
+      _authSubscription = stream.listen((data) async {
+        if (data.event == AuthChangeEvent.passwordRecovery) {
+          // 1. Immediately activate the in-memory recovery guard
+          _isPasswordRecovery = true;
+          if (mounted) setState(() => _isPasswordRecovery = true);
+
+          // 2. Capture data.session?.user.id and update confirmed identity
+          final recoveryUid = data.session?.user.id;
+          if (recoveryUid != null && recoveryUid.isNotEmpty) {
+            try {
+              // 3. Awaited, error-handled persistence operation
+              await setConfirmedRecoveryUserId(recoveryUid);
+            } catch (e) {
+              debugPrint('Failed to persist confirmed recovery user ID: $e');
+            }
+          } else {
+            debugPrint(
+                'Warning: passwordRecovery event received with missing session user ID');
+          }
+
+          if (mounted) setState(() {});
+        } else if (data.event == AuthChangeEvent.signedOut) {
+          if (mounted) setState(() => _isPasswordRecovery = false);
+        }
+      }, onError: (error) {
+        debugPrint('AuthGate auth subscription error: $error');
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(AuthGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.authStream != widget.authStream) {
+      _subscribeToAuthStream();
+    }
   }
 
   @override
@@ -55,7 +146,8 @@ class _AuthGateState extends State<AuthGate> {
     if (_handledConfirmation) return;
     _handledConfirmation = true;
 
-    final role = (session.user.userMetadata?['role'] as String?) ?? 'user';
+    final roleEnum = resolveUserAuthRole(session.user.userMetadata);
+    final role = roleEnum == AuthRole.productionHouse ? 'production' : 'talent';
     final email = session.user.email;
 
     setState(() {
@@ -80,11 +172,30 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    Stream<AuthState>? authStream = widget.authStream;
+    Session? activeSession = widget.initialSession;
+
+    if (authStream == null) {
+      try {
+        authStream = Supabase.instance.client.auth.onAuthStateChange;
+        activeSession = Supabase.instance.client.auth.currentSession;
+      } catch (_) {
+        authStream = null;
+        activeSession = null;
+      }
+    }
+
+    if (authStream == null) {
+      // Supabase is uninitialized (e.g. in widget smoke tests)
+      return RoleSelectionScreen(autoCheckHealth: widget.autoCheckHealth);
+    }
+
     return StreamBuilder<AuthState>(
-      stream: Supabase.instance.client.auth.onAuthStateChange,
+      stream: authStream,
       builder: (context, snapshot) {
         // Show small standard spinner while Supabase checks authentication state
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            activeSession == null) {
           return const Scaffold(
             backgroundColor: AppColors.background,
             body: Center(
@@ -101,18 +212,21 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         // Grab active session if one exists
-        final session = snapshot.data?.session ??
-            Supabase.instance.client.auth.currentSession;
         final event = snapshot.data?.event;
+        final session = event == AuthChangeEvent.signedOut
+            ? null
+            : (snapshot.data?.session ?? activeSession);
 
         // Check password recovery mode
-        final isRecovery = _isPasswordRecovery ||
-            event == AuthChangeEvent.passwordRecovery ||
+        final isEventPasswordRecovery =
+            event == AuthChangeEvent.passwordRecovery;
+        final hasRuntimeRecoveryEvent = _isPasswordRecovery ||
+            isEventPasswordRecovery ||
             _isRecoveryRedirect;
+        final hasPersistentRecoveryState = isPasswordRecoveryInProgress();
 
-        if (isRecovery) {
-          // While in recovery redirect on web, wait briefly until Supabase parses token
-          if (_isRecoveryRedirect && session == null) {
+        if (hasRuntimeRecoveryEvent || hasPersistentRecoveryState) {
+          if (session == null && _isRecoveryRedirect) {
             return const Scaffold(
               backgroundColor: AppColors.background,
               body: Center(
@@ -129,7 +243,7 @@ class _AuthGateState extends State<AuthGate> {
                     ),
                     SizedBox(height: 16),
                     Text(
-                      'Opening password reset...',
+                      'Validating recovery link...',
                       style: TextStyle(
                         color: AppColors.textMuted,
                         fontSize: 14,
@@ -141,14 +255,34 @@ class _AuthGateState extends State<AuthGate> {
             );
           }
 
-          final role =
-              (session?.user.userMetadata?['role'] as String?) ?? 'user';
-          final email = session?.user.email;
-          return ForgotPasswordScreen(
-            selectedRole: role,
-            initialEmail: email,
-            isRecoveryMode: true,
-          );
+          if (session == null) {
+            // Stale recovery state without session: safely clear and show role selection
+            clearRecoveryState();
+            return RoleSelectionScreen(autoCheckHealth: widget.autoCheckHealth);
+          }
+
+          // A session is present. Verify confirmed recovery session identity:
+          final confirmedRecoveryUserId = getConfirmedRecoveryUserId();
+          final isConfirmedRecoveryUser = hasRuntimeRecoveryEvent ||
+              (confirmedRecoveryUserId != null &&
+                  confirmedRecoveryUserId == session.user.id);
+
+          if (!isConfirmedRecoveryUser) {
+            // The restored session is a pre-existing normal session (or belongs to another user).
+            // Do NOT enter password recovery! Safely clear stale recovery state and fall through to portal routing.
+            clearRecoveryState();
+          } else {
+            final roleEnum = resolveUserAuthRole(session.user.userMetadata);
+            final role =
+                roleEnum == AuthRole.productionHouse ? 'production' : 'talent';
+            final email = session.user.email;
+            return ForgotPasswordScreen(
+              selectedRole: role,
+              initialEmail: email,
+              isRecoveryMode: true,
+              recoveryClient: widget.recoveryClient,
+            );
+          }
         }
 
         // Special handling for the Gmail confirmation link tab (?confirmed=true)
@@ -195,15 +329,97 @@ class _AuthGateState extends State<AuthGate> {
           );
         }
 
-        // Normal app flow: if logged in and not pending verification, render real HomeScreen
-        if (session != null && !isPendingEmailVerification()) {
-          final role = session.user.userMetadata?['role'] as String?;
-          return HomeScreen(roleType: role, userType: role);
+        // Normal app flow: if logged in and not pending verification and not in recovery, render appropriate portal
+        if (session != null &&
+            !isPendingEmailVerification() &&
+            !isPasswordRecoveryInProgress()) {
+          final role = resolveUserAuthRole(session.user.userMetadata);
+          switch (role) {
+            case AuthRole.talent:
+              return const TalentPortalScreen();
+            case AuthRole.productionHouse:
+              return const DashboardScreen();
+            case AuthRole.unrecognized:
+              return _UnrecognizedRoleScreen(
+                rawRole:
+                    (session.user.userMetadata?['account_type'] as String?) ??
+                        (session.user.userMetadata?['role'] as String?) ??
+                        'Unknown',
+              );
+          }
         }
 
         // Normal app flow: if logged out (or pending verification), render RoleSelectionScreen
-        return const RoleSelectionScreen();
+        return RoleSelectionScreen(autoCheckHealth: widget.autoCheckHealth);
       },
+    );
+  }
+}
+
+/// Controlled error screen displayed when a user logs in with an unrecognized role.
+class _UnrecognizedRoleScreen extends StatelessWidget {
+  final String rawRole;
+
+  const _UnrecognizedRoleScreen({required this.rawRole});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28.0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  color: AppColors.error,
+                  size: 64,
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Unrecognized Account Role',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Your account has the role "$rawRole" which does not correspond to Talent or Production House access.\n\nPlease contact CineConnect support.',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () async {
+                    await Supabase.instance.client.auth.signOut();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.surface,
+                    foregroundColor: AppColors.gold,
+                    side: const BorderSide(color: AppColors.gold),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Sign Out'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -249,69 +465,27 @@ class _EmailVerifiedTabFallback extends StatelessWidget {
                   child: const Icon(
                     Icons.check_circle_rounded,
                     color: AppColors.gold,
-                    size: 64,
+                    size: 56,
                   ),
                 ),
                 const SizedBox(height: 24),
                 const Text(
-                  'Verification Successful!',
-                  textAlign: TextAlign.center,
+                  'Email Verified Successfully!',
                   style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 26,
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
                   ),
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'You can close this tab and return to your CineConnect window, or log in below.',
+                Text(
+                  'Your account ($email) has been verified. You can now return to your app window and sign in.',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                  ),
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 15,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 36),
-                ElevatedButton(
-                  onPressed: () {
-                    clearConfirmedQueryParam();
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => AuthScreen(
-                          selectedRole: role,
-                          initialIsLogin: true,
-                          initialEmail: email,
-                          successMessage:
-                              'Verification successful! Please log in to continue.',
-                        ),
-                      ),
-                      (route) => false,
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.gold,
-                    foregroundColor: Colors.black,
-                    minimumSize: const Size.fromHeight(50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Go to Login',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Icon(Icons.arrow_forward_rounded, size: 20),
-                    ],
-                  ),
                 ),
               ],
             ),

@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cineconnect/app/theme.dart';
 import '../../core/state/app_state.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
   final CineAppState appState;
+  final Future<void> Function()? onSignOut;
 
-  const ProfileSettingsScreen({super.key, required this.appState});
+  const ProfileSettingsScreen({
+    super.key,
+    required this.appState,
+    this.onSignOut,
+  });
 
   @override
   State<ProfileSettingsScreen> createState() => _ProfileSettingsScreenState();
@@ -284,18 +291,44 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
             child: const Text('Cancel', style: TextStyle(color: CineColors.textMuted)),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(ctx).pop();
-              Navigator.of(context).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  backgroundColor: CineColors.surfaceElevated,
-                  content: Text(
-                    'Logged out of CineConnect',
-                    style: TextStyle(color: CineColors.gold),
-                  ),
-                ),
-              );
+              try {
+                if (widget.onSignOut != null) {
+                  await widget.onSignOut!();
+                } else {
+                  await Supabase.instance.client.auth.signOut();
+                }
+                if (context.mounted) {
+                  final goRouter = GoRouter.maybeOf(context);
+                  if (goRouter != null) {
+                    context.go('/role-selection');
+                  } else {
+                    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      backgroundColor: CineColors.surfaceElevated,
+                      content: Text(
+                        'Logged out of CineConnect',
+                        style: TextStyle(color: CineColors.gold),
+                      ),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: CineColors.error,
+                      content: Text(
+                        'Sign out failed: ${e.toString()}',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  );
+                }
+              }
             },
             child: const Text(
               'Log out',

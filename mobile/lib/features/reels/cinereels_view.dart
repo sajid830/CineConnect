@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/state/app_state.dart';
 
@@ -173,8 +173,8 @@ class _CineReelsViewState extends State<CineReelsView> with SingleTickerProvider
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: CineColors.gold.withOpacity(0.12),
-                          border: Border.all(color: CineColors.gold.withOpacity(0.4), width: 1.5),
+                          color: CineColors.gold.withValues(alpha: 0.12),
+                          border: Border.all(color: CineColors.gold.withValues(alpha: 0.4), width: 1.5),
                         ),
                         child: const Icon(Icons.movie_creation_outlined, size: 54, color: CineColors.gold),
                       ),
@@ -236,7 +236,7 @@ class _CineReelsViewState extends State<CineReelsView> with SingleTickerProvider
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withOpacity(0.8),
+                        Colors.black.withValues(alpha: 0.8),
                         Colors.transparent,
                       ],
                     ),
@@ -247,9 +247,9 @@ class _CineReelsViewState extends State<CineReelsView> with SingleTickerProvider
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
+                          color: Colors.black.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: CineColors.gold.withOpacity(0.5)),
+                          border: Border.all(color: CineColors.gold.withValues(alpha: 0.5)),
                         ),
                         child: Row(
                           children: [
@@ -269,7 +269,7 @@ class _CineReelsViewState extends State<CineReelsView> with SingleTickerProvider
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
+                          color: Colors.black.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
@@ -347,7 +347,7 @@ class _CineReelsViewState extends State<CineReelsView> with SingleTickerProvider
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: CineColors.gold.withOpacity(0.5),
+                                  color: CineColors.gold.withValues(alpha: 0.5),
                                   blurRadius: 10,
                                 ),
                               ],
@@ -422,7 +422,7 @@ class _CineReelsViewState extends State<CineReelsView> with SingleTickerProvider
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                           decoration: BoxDecoration(
-                            color: CineColors.gold.withOpacity(0.2),
+                            color: CineColors.gold.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(4),
                             border: Border.all(color: CineColors.gold, width: 0.6),
                           ),

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/state/app_state.dart';
 
@@ -15,8 +15,6 @@ class LinkedInCinemaFeed extends StatefulWidget {
 class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
   // Map of post IDs to their current aspect ratio (2.39:1 vs 16:9)
   final Map<String, bool> _isScopeMode = {};
-  // Map of post IDs to their LogC4 raw preview mode
-  final Map<String, bool> _isLogC4 = {};
   // Map of post IDs to like state
   final Map<String, bool> _likedPosts = {};
 
@@ -143,7 +141,6 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
         // Posts List
         ...widget.appState.feedPosts.map((post) {
           final isScope = _isScopeMode[post.id] ?? true;
-          final isLog = _isLogC4[post.id] ?? false;
           final isLiked = _likedPosts[post.id] ?? false;
           final isFollowed = _followedAuthors[post.id] ?? false;
           final isBookmarked = _bookmarkedPosts[post.id] ?? false;
@@ -198,7 +195,7 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                                   decoration: BoxDecoration(
                                     color: Colors.transparent,
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: CineColors.gold.withOpacity(0.6), width: 0.8),
+                                    border: Border.all(color: CineColors.gold.withValues(alpha: 0.6), width: 0.8),
                                   ),
                                   child: Text(
                                     post.id == 'post-1' ? 'Method Actress' : 'Lead Actor & Stunts',
@@ -290,7 +287,7 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                             Icon(
                               Icons.movie_creation_outlined,
                               size: 72,
-                              color: Colors.white.withOpacity(0.06),
+                              color: Colors.white.withValues(alpha: 0.06),
                             ),
                             // Top Tag Pill
                             Positioned(
@@ -299,9 +296,9 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.7),
+                                  color: Colors.black.withValues(alpha: 0.7),
                                   borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: CineColors.gold.withOpacity(0.7), width: 0.8),
+                                  border: Border.all(color: CineColors.gold.withValues(alpha: 0.7), width: 0.8),
                                 ),
                                 child: Text(
                                   post.id == 'post-1' ? 'WRAP PARTY & BTS' : 'AUDITION PREPARATION',
@@ -323,7 +320,7 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                                   height: 44,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: CineColors.gold.withOpacity(0.85),
+                                    color: CineColors.gold.withValues(alpha: 0.85),
                                   ),
                                   child: const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 28),
                                 ),
@@ -342,7 +339,7 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                                     end: Alignment.bottomCenter,
                                     colors: [
                                       Colors.transparent,
-                                      Colors.black.withOpacity(0.9),
+                                      Colors.black.withValues(alpha: 0.9),
                                     ],
                                   ),
                                 ),
@@ -493,7 +490,7 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
               ],
             ),
           );
-        }).toList(),
+        }),
       ],
     );
   }

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/state/app_state.dart';
 
@@ -185,7 +185,7 @@ class _CreateActionSheetState extends State<CreateActionSheet> {
                                     vertical: 3,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.55),
+                                    color: Colors.black.withValues(alpha: 0.55),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: const Text(
@@ -207,9 +207,9 @@ class _CreateActionSheetState extends State<CreateActionSheet> {
                                       height: 64,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: CineColors.gold.withOpacity(0.15),
+                                        color: CineColors.gold.withValues(alpha: 0.15),
                                         border: Border.all(
-                                          color: CineColors.gold.withOpacity(0.5),
+                                          color: CineColors.gold.withValues(alpha: 0.5),
                                         ),
                                       ),
                                       child: Icon(

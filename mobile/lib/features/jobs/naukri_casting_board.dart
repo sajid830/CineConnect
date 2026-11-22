@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/state/app_state.dart';
 
@@ -184,7 +184,7 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.18),
+        color: color.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(4),
         border: Border.all(color: color, width: 0.8),
       ),
@@ -249,7 +249,7 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: CineColors.gold.withOpacity(0.15),
+                        color: CineColors.gold.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: const Text(
@@ -297,7 +297,7 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 9),
                       decoration: BoxDecoration(
-                        color: _activeSubTab == 0 ? CineColors.gold.withOpacity(0.2) : Colors.transparent,
+                        color: _activeSubTab == 0 ? CineColors.gold.withValues(alpha: 0.2) : Colors.transparent,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: _activeSubTab == 0 ? CineColors.gold : Colors.transparent,
@@ -337,7 +337,7 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 9),
                       decoration: BoxDecoration(
-                        color: _activeSubTab == 1 ? CineColors.gold.withOpacity(0.2) : Colors.transparent,
+                        color: _activeSubTab == 1 ? CineColors.gold.withValues(alpha: 0.2) : Colors.transparent,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: _activeSubTab == 1 ? CineColors.gold : Colors.transparent,
@@ -446,7 +446,7 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                     color: CineColors.surfaceCard,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: matchPercent >= 80 ? CineColors.gold.withOpacity(0.5) : CineColors.border,
+                      color: matchPercent >= 80 ? CineColors.gold.withValues(alpha: 0.5) : CineColors.border,
                       width: matchPercent >= 80 ? 1.2 : 1,
                     ),
                   ),
@@ -494,8 +494,8 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: matchPercent >= 75
-                                  ? CineColors.success.withOpacity(0.18)
-                                  : CineColors.warning.withOpacity(0.18),
+                                  ? CineColors.success.withValues(alpha: 0.18)
+                                  : CineColors.warning.withValues(alpha: 0.18),
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(
                                 color: matchPercent >= 75 ? CineColors.success : CineColors.warning,
@@ -677,7 +677,7 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                   decoration: BoxDecoration(
                     color: CineColors.surfaceCard,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: CineColors.gold.withOpacity(0.4)),
+                    border: Border.all(color: CineColors.gold.withValues(alpha: 0.4)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

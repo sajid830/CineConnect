@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/state/app_state.dart';
 
@@ -238,7 +238,7 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
     return InkWell(
       onTap: () => widget.appState.markNotificationAsRead(notif.id),
       child: Container(
-        color: notif.isRead ? Colors.transparent : CineColors.gold.withOpacity(0.04),
+        color: notif.isRead ? Colors.transparent : CineColors.gold.withValues(alpha: 0.04),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,11 +252,11 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
-                      colors: [color.withOpacity(0.32), CineColors.surfaceElevated],
+                      colors: [color.withValues(alpha: 0.32), CineColors.surfaceElevated],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    border: Border.all(color: color.withOpacity(0.5)),
+                    border: Border.all(color: color.withValues(alpha: 0.5)),
                   ),
                   child: Center(
                     child: Text(

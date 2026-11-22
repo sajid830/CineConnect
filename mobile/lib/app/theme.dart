@@ -1,4 +1,6 @@
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
+
+export '../core/theme/app_theme.dart' show CineColors, CineTheme;
 
 /// CineConnect color palette specification.
 class AppColors {
@@ -14,18 +16,25 @@ class AppColors {
   static const Color error = Color(0xFFE5484D);
 
   // Background and helper constants for deep dark cinema styling
+  static const Color black = Color(0xFF0B0C10);
   static const Color background = Color(0xFF0D0D0D);
   static const Color surfaceElevated = Color(0xFF1F1F1F);
+  static const Color surfaceCard = Color(0xFF141419);
   static const Color darkest = Color(0xFF080808);
   static const Color textSecondary = textMuted;
   static const Color goldDark = Color(0xFFB08D23);
   static const Color accent = goldLight;
+  static const Color accentCyan = Color(0xFF00E5FF);
   static const Color success = Color(0xFF30A46C);
+  static const Color warning = Color(0xFFF59E0B);
+  static const Color goldGlow = Color(0x33D4AF37);
 }
 
 /// CineConnect Dark Theme specification adhering to Material 3 guidelines.
 class AppTheme {
   AppTheme._();
+
+  static ThemeData get dark => darkTheme;
 
   // Backward-compatible aliases mapped to the updated CineConnect palette
   static const Color primaryAmber = AppColors.gold;

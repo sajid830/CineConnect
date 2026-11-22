@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import HTTPAuthorizationCredentials
 
-from app.core.security import create_test_token
+from tests.conftest import create_test_jwt as create_test_token
 from app.api.dependencies import get_current_user
 from app.models.user import User
 from tests.conftest import test_engine

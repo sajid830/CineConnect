@@ -1,38 +1,11 @@
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:cineconnect/app/theme.dart';
-import 'package:cineconnect/features/auth/presentation/screens/login_screen.dart';
-import 'package:cineconnect/features/auth/presentation/screens/user_type_selection_screen.dart';
-import 'package:cineconnect/features/home/presentation/screens/home_screen.dart';
+import 'router/app_router.dart';
+import 'theme.dart';
 
-/// Central GoRouter configuration provider.
-final routerProvider = Provider<GoRouter>((ref) {
-  return GoRouter(
-    initialLocation: '/',
-    debugLogDiagnostics: false,
-    routes: [
-      GoRoute(
-        path: '/',
-        name: 'user_type_selection',
-        builder: (context, state) => const UserTypeSelectionScreen(),
-      ),
-      GoRoute(
-        path: '/login/:type',
-        name: 'login',
-        builder: (context, state) {
-          final type = state.pathParameters['type'] ?? 'talent';
-          return LoginScreen(userType: type);
-        },
-      ),
-      GoRoute(
-        path: '/home',
-        name: 'home',
-        builder: (context, state) => const HomeScreen(),
-      ),
-    ],
-  );
-});
+/// Central GoRouter provider.
+final routerProvider = Provider<GoRouter>((ref) => appRouter);
 
 /// Root CineConnect application widget.
 class CineConnectApp extends StatelessWidget {
@@ -40,8 +13,6 @@ class CineConnectApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // If CineConnectApp is pumped without an ancestral ProviderScope
-    // (such as in widget_test.dart), provide a fallback scope so it renders cleanly.
     return const _ProviderScopeFallback(
       child: _CineConnectAppView(),
     );

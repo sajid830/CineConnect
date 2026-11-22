@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 
 class OnSetStoryViewerDialog extends StatelessWidget {
@@ -22,10 +22,10 @@ class OnSetStoryViewerDialog extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             color: const Color(0xFF0F1015),
-            border: Border.all(color: CineColors.gold.withOpacity(0.4), width: 1.5),
+            border: Border.all(color: CineColors.gold.withValues(alpha: 0.4), width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: CineColors.gold.withOpacity(0.25),
+                color: CineColors.gold.withValues(alpha: 0.25),
                 blurRadius: 30,
                 spreadRadius: 2,
               ),
@@ -52,7 +52,7 @@ class OnSetStoryViewerDialog extends StatelessWidget {
                       child: Container(
                         height: 3,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -130,7 +130,7 @@ class OnSetStoryViewerDialog extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
+                      color: Colors.black.withValues(alpha: 0.6),
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(color: CineColors.border),
                     ),
@@ -203,7 +203,7 @@ class OnSetStoryViewerDialog extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.85),
+                              color: Colors.red.withValues(alpha: 0.85),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: const Text(
@@ -226,7 +226,7 @@ class OnSetStoryViewerDialog extends StatelessWidget {
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.75),
+                            color: Colors.black.withValues(alpha: 0.75),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: CineColors.border),
                           ),
@@ -288,7 +288,7 @@ class _ViewfinderOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = CineColors.gold.withOpacity(0.4)
+      ..color = CineColors.gold.withValues(alpha: 0.4)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
 

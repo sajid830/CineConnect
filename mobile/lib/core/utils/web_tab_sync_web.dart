@@ -91,6 +91,79 @@ bool isPendingEmailVerification() {
   }
 }
 
+bool _passwordRecoveryInProgress = false;
+String? _confirmedRecoveryUserId;
+
+Future<void> initPasswordRecoveryState() async {
+  try {
+    final val =
+        web.window.localStorage.getItem('cineconnect_recovery_in_progress');
+    _passwordRecoveryInProgress = val == 'true';
+    _confirmedRecoveryUserId =
+        web.window.localStorage.getItem('cineconnect_recovery_user_id');
+  } catch (e) {
+    debugPrint('initPasswordRecoveryState web error: $e');
+  }
+}
+
+Future<void> setPasswordRecoveryInProgress(bool value) async {
+  _passwordRecoveryInProgress = value;
+  try {
+    if (value) {
+      web.window.localStorage
+          .setItem('cineconnect_recovery_in_progress', 'true');
+    } else {
+      web.window.localStorage.removeItem('cineconnect_recovery_in_progress');
+    }
+  } catch (e) {
+    debugPrint('setPasswordRecoveryInProgress error: $e');
+  }
+}
+
+bool isPasswordRecoveryInProgress() {
+  try {
+    final val =
+        web.window.localStorage.getItem('cineconnect_recovery_in_progress');
+    return val == 'true' || _passwordRecoveryInProgress;
+  } catch (e) {
+    return _passwordRecoveryInProgress;
+  }
+}
+
+Future<void> setConfirmedRecoveryUserId(String? userId) async {
+  _confirmedRecoveryUserId = userId;
+  try {
+    if (userId != null && userId.isNotEmpty) {
+      web.window.localStorage
+          .setItem('cineconnect_recovery_user_id', userId);
+    } else {
+      web.window.localStorage.removeItem('cineconnect_recovery_user_id');
+    }
+  } catch (e) {
+    debugPrint('setConfirmedRecoveryUserId error: $e');
+  }
+}
+
+String? getConfirmedRecoveryUserId() {
+  try {
+    return _confirmedRecoveryUserId ??
+        web.window.localStorage.getItem('cineconnect_recovery_user_id');
+  } catch (e) {
+    return _confirmedRecoveryUserId;
+  }
+}
+
+Future<void> clearRecoveryState() async {
+  _passwordRecoveryInProgress = false;
+  _confirmedRecoveryUserId = null;
+  try {
+    web.window.localStorage.removeItem('cineconnect_recovery_in_progress');
+    web.window.localStorage.removeItem('cineconnect_recovery_user_id');
+  } catch (e) {
+    debugPrint('clearRecoveryState error: $e');
+  }
+}
+
 void clearUrlParams() {
   try {
     web.window.history.replaceState(null, '', web.window.location.pathname);

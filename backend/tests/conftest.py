@@ -1,5 +1,9 @@
-from typing import AsyncGenerator
+import time
+from typing import Any, AsyncGenerator, Dict, Optional
 from uuid import UUID
+import jwt
+from jwt import PyJWKSet
+from cryptography.hazmat.primitives.asymmetric import ec
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -11,8 +15,107 @@ from sqlalchemy.pool import NullPool
 
 from app.main import app
 from app.core.config import settings
-from app.core.security import create_test_token
 from app.db.session import get_db
+
+# ==============================================================================
+# Isolated Test Cryptographic Keys & Token Creation (ES256 and HS256)
+# ==============================================================================
+
+TEST_EC_KEY = ec.generate_private_key(ec.SECP256R1())
+TEST_EC_KID = "test-ec-kid"
+TEST_HS256_SECRET = "cineconnect_test_jwt_secret_32_characters_long"
+
+
+def _ec_to_jwk(private_key: ec.EllipticCurvePrivateKey, kid: str = "test-ec-kid") -> Dict[str, Any]:
+    public_numbers = private_key.public_key().public_numbers()
+    x_bytes = public_numbers.x.to_bytes(32, "big")
+    y_bytes = public_numbers.y.to_bytes(32, "big")
+    return {
+        "kty": "EC",
+        "crv": "P-256",
+        "kid": kid,
+        "use": "sig",
+        "alg": "ES256",
+        "x": jwt.utils.base64url_encode(x_bytes).decode("utf-8"),
+        "y": jwt.utils.base64url_encode(y_bytes).decode("utf-8"),
+    }
+
+
+TEST_EC_JWK = _ec_to_jwk(TEST_EC_KEY, kid=TEST_EC_KID)
+
+
+def create_test_jwt(
+    user_id: UUID | str,
+    email: str = "test@cineconnect.com",
+    account_type: str = "talent",
+    role: Optional[str] = None,
+    extra_claims: Optional[Dict[str, Any]] = None,
+    expires_in_seconds: int = 86400,
+    algorithm: str = "ES256",
+    signing_key: Any = None,
+    headers: Optional[Dict[str, Any]] = None,
+    kid: Optional[str] = None,
+) -> str:
+    """Generates a test Supabase JWT token with explicit cryptographic isolation.
+
+    Defaults to ES256 using the isolated test EC key pair and test kid,
+    guaranteeing zero network dependency and zero coupling to runtime .env.
+    """
+    now = int(time.time())
+    effective_role = role or account_type
+    token_headers = {"alg": algorithm, "typ": "JWT"}
+
+    if algorithm == "ES256":
+        key = signing_key or TEST_EC_KEY
+        token_headers["kid"] = kid or TEST_EC_KID
+    elif algorithm == "HS256":
+        key = signing_key or TEST_HS256_SECRET
+    else:
+        key = signing_key
+
+    if headers:
+        token_headers.update(headers)
+
+    payload = {
+        "sub": str(user_id),
+        "email": email,
+        "iss": settings.SUPABASE_JWT_ISSUER,
+        "aud": settings.SUPABASE_JWT_AUDIENCE,
+        "role": "authenticated",
+        "iat": now,
+        "exp": now + expires_in_seconds,
+        "user_metadata": {"account_type": effective_role, "role": effective_role},
+    }
+    if extra_claims:
+        for k, v in extra_claims.items():
+            if isinstance(v, dict) and k in payload and isinstance(payload[k], dict):
+                payload[k].update(v)
+            else:
+                payload[k] = v
+
+    return jwt.encode(payload, key, algorithm=algorithm, headers=token_headers)
+
+
+# Maintain alias for compatibility
+create_test_token = create_test_jwt
+
+
+@pytest.fixture(autouse=True)
+def isolate_test_jwks():
+    """Seeds the in-memory JWK manager with the test EC key to isolate tests
+    from external network calls and ensure consistent ES256 verification.
+    """
+    from app.core.security import jwk_manager
+    original_jwk_set = jwk_manager._jwk_set
+    original_fetch_time = jwk_manager._last_fetch_time
+    jwk_manager._jwk_set = PyJWKSet.from_dict({"keys": [TEST_EC_JWK]})
+    jwk_manager._last_fetch_time = time.time()
+    try:
+        yield
+    finally:
+        jwk_manager._jwk_set = original_jwk_set
+        jwk_manager._last_fetch_time = original_fetch_time
+
 
 # Asynchronous PostgreSQL test engine connected to cineconnect_test_db
 test_engine = create_async_engine(

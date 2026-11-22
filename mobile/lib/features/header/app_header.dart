@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 import '../../core/state/app_state.dart';
 
 class CineAppHeader extends StatelessWidget {
@@ -93,7 +93,7 @@ class CineAppHeader extends StatelessWidget {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: CineColors.gold.withOpacity(0.35),
+                  color: CineColors.gold.withValues(alpha: 0.35),
                   blurRadius: 8,
                 ),
               ],
@@ -124,10 +124,10 @@ class CineAppHeader extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(4),
               border: Border.all(
-                color: CineColors.gold.withOpacity(0.8),
+                color: CineColors.gold.withValues(alpha: 0.8),
                 width: 0.8,
               ),
             ),

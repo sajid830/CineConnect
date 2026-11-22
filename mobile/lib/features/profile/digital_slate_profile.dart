@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/state/app_state.dart';
 import 'profile_settings_screen.dart';
@@ -81,7 +81,7 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: CineColors.gold.withOpacity(0.25),
+                        color: CineColors.gold.withValues(alpha: 0.25),
                         blurRadius: 16,
                       ),
                     ],
@@ -452,7 +452,7 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.85)],
+                    colors: [Colors.transparent, Colors.black.withValues(alpha: 0.85)],
                   ),
                 ),
                 child: Column(

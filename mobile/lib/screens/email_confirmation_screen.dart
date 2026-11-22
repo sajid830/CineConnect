@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cineconnect/app/theme.dart';
+import 'package:cineconnect/core/config/env_config.dart';
 import 'package:cineconnect/core/utils/web_tab_sync.dart';
 import 'auth_screen.dart';
 
@@ -103,6 +104,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       await Supabase.instance.client.auth.resend(
         type: OtpType.signup,
         email: widget.email,
+        emailRedirectTo: EnvConfig.authCallbackUrl(isRecovery: false),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

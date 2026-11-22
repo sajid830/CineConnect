@@ -1,9 +1,11 @@
-import 'package:flutter/foundation.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cineconnect/app/theme.dart';
+import 'package:cineconnect/core/config/env_config.dart';
 import 'package:cineconnect/core/utils/web_tab_sync.dart';
-import 'package:cineconnect/features/home/presentation/screens/home_screen.dart';
+import 'package:cineconnect/features/talent/presentation/talent_portal_screen.dart';
+import 'package:cineconnect/features/production_house/dashboard/dashboard_screen.dart';
 import 'email_confirmation_screen.dart';
 import 'forgot_password_screen.dart';
 
@@ -28,6 +30,11 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   late bool isLogin;
   bool isLoading = false;
+
+  bool get isProduction =>
+      widget.selectedRole == 'production' ||
+      widget.selectedRole == 'production_house' ||
+      widget.selectedRole == 'production_hub';
 
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
@@ -65,6 +72,10 @@ class _AuthScreenState extends State<AuthScreen> {
     final email = _emailController.text.trim().toLowerCase();
     final password = _passwordController.text.trim();
 
+    final isProduction = widget.selectedRole == 'production' ||
+        widget.selectedRole == 'production_house' ||
+        widget.selectedRole == 'production_hub';
+
     if (isLogin) {
       if (email.isEmpty || password.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -77,7 +88,7 @@ class _AuthScreenState extends State<AuthScreen> {
         return;
       }
     } else {
-      // Talent / User Sign Up validation
+      // Sign Up validation
       final name = _nameController.text.trim();
       final username = _usernameController.text.trim().toLowerCase();
       final mobile = _mobileController.text.trim();
@@ -173,19 +184,87 @@ class _AuthScreenState extends State<AuthScreen> {
           password: password,
         );
         if (response.session != null && mounted) {
-          final role = (response.user?.userMetadata?['role'] as String?) ??
-              widget.selectedRole;
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (_) => HomeScreen(roleType: role, userType: role),
-            ),
-            (route) => false,
-          );
+          final rawRole =
+              (response.user?.userMetadata?['account_type'] as String?) ??
+              (response.user?.userMetadata?['role'] as String?) ??
+              '';
+          final normalizedRole = rawRole.toLowerCase().trim();
+
+          // Canonical verification: distinguish talent vs production_house
+          final isUserProduction = normalizedRole == 'production' ||
+              normalizedRole == 'production_house' ||
+              normalizedRole == 'production_hub';
+          final isUserTalent = normalizedRole == 'talent' ||
+              normalizedRole == 'user';
+
+          // Cross-role login protection:
+          if (isProduction && !isUserProduction) {
+            await Supabase.instance.client.auth.signOut();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Access Denied: This account is registered as Talent. Please sign in via the Talent interface.',
+                  ),
+                  backgroundColor: AppColors.error,
+                  duration: Duration(seconds: 4),
+                ),
+              );
+              setState(() => isLoading = false);
+            }
+            return;
+          }
+
+          if (!isProduction && !isUserTalent) {
+            await Supabase.instance.client.auth.signOut();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Access Denied: This account is registered as a Production House. Please sign in via the Production House interface.',
+                  ),
+                  backgroundColor: AppColors.error,
+                  duration: Duration(seconds: 4),
+                ),
+              );
+              setState(() => isLoading = false);
+            }
+            return;
+          }
+
+          final goRouter = GoRouter.maybeOf(context);
+          if (isProduction) {
+            if (goRouter != null) {
+              context.go('/production-house');
+            } else {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const DashboardScreen()),
+                (route) => false,
+              );
+            }
+          } else {
+            if (goRouter != null) {
+              context.go('/talent');
+            } else {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const TalentPortalScreen()),
+                (route) => false,
+              );
+            }
+          }
         }
       } else {
-        // Sign Up (Talent)
+        // Sign Up: map selected role to canonical account_type and preserve role for UI
+        final isProduction = widget.selectedRole == 'production' ||
+            widget.selectedRole == 'production_house' ||
+            widget.selectedRole == 'production_hub';
+        final canonicalAccountType =
+            isProduction ? 'production_house' : 'talent';
+
         final Map<String, dynamic> metadata = {
+          'account_type': canonicalAccountType,
           'role': widget.selectedRole,
           'full_name': _nameController.text.trim(),
           'username': _usernameController.text.trim().toLowerCase(),
@@ -196,8 +275,7 @@ class _AuthScreenState extends State<AuthScreen> {
           email: email,
           password: password,
           data: metadata,
-          emailRedirectTo:
-              kIsWeb ? '${Uri.base.origin}/?confirmed=true' : null,
+          emailRedirectTo: EnvConfig.authCallbackUrl(isRecovery: false),
         );
 
         setPendingEmailVerification(true);
@@ -369,7 +447,13 @@ class _AuthScreenState extends State<AuthScreen> {
 
                 // Title & Subtitle (Left-aligned)
                 Text(
-                  isLogin ? 'Welcome Back' : 'Create Talent Account',
+                  isLogin
+                      ? (isProduction
+                          ? 'Welcome Back, Studio'
+                          : 'Welcome Back')
+                      : (isProduction
+                          ? 'Register Production House'
+                          : 'Create Talent Account'),
                   style: const TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -379,8 +463,12 @@ class _AuthScreenState extends State<AuthScreen> {
                 const SizedBox(height: 8),
                 Text(
                   isLogin
-                      ? 'Enter your credentials to access your CineConnect dashboard.'
-                      : 'Join the premier cinema and entertainment network.',
+                      ? (isProduction
+                          ? 'Enter your studio credentials to access your production dashboard.'
+                          : 'Enter your credentials to access your CineConnect dashboard.')
+                      : (isProduction
+                          ? 'Register your studio to post casting calls and hire top cinema talent.'
+                          : 'Join the premier cinema and entertainment network.'),
                   style: const TextStyle(
                     fontSize: 14,
                     color: AppColors.textMuted,
@@ -422,27 +510,35 @@ class _AuthScreenState extends State<AuthScreen> {
 
                 // Form Fields
                 if (!isLogin) ...[
-                  // 1. Full Name
+                  // 1. Full Name / Studio Name
                   _buildInputField(
                     controller: _nameController,
-                    label: 'Full Name',
-                    hint: 'Full Name',
+                    label: isProduction ? 'Studio / Company Name' : 'Full Name',
+                    hint: isProduction
+                        ? 'e.g. Mythri Movie Makers'
+                        : 'e.g. Jane Doe',
                   ),
                   const SizedBox(height: 20),
 
                   // 2. Username
                   _buildInputField(
                     controller: _usernameController,
-                    label: 'Username',
-                    hint: 'Username',
+                    label: isProduction ? 'Studio Username' : 'Username',
+                    hint: isProduction
+                        ? 'e.g. mythriofficial'
+                        : 'e.g. janedoe',
                   ),
                   const SizedBox(height: 20),
 
                   // 3. Email Address
                   _buildInputField(
                     controller: _emailController,
-                    label: 'Email Address',
-                    hint: 'Email Address',
+                    label: isProduction
+                        ? 'Official Studio Email'
+                        : 'Email Address',
+                    hint: isProduction
+                        ? 'e.g. contact@studio.com'
+                        : 'e.g. jane@example.com',
                     keyboardType: TextInputType.emailAddress,
                   ),
                   const SizedBox(height: 20),
@@ -450,8 +546,10 @@ class _AuthScreenState extends State<AuthScreen> {
                   // 4. Mobile Number
                   _buildInputField(
                     controller: _mobileController,
-                    label: 'Mobile Number',
-                    hint: 'Mobile Number',
+                    label: isProduction
+                        ? 'Contact Phone Number'
+                        : 'Mobile Number',
+                    hint: 'e.g. +91 9876543210',
                     keyboardType: TextInputType.phone,
                   ),
                   const SizedBox(height: 20),

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 
 class CineBottomNavBar extends StatelessWidget {
   final int currentIndex;
@@ -28,7 +28,7 @@ class CineBottomNavBar extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.4),
+            color: Colors.black.withValues(alpha: 0.4),
             blurRadius: 12,
             offset: const Offset(0, -2),
           ),
@@ -105,7 +105,7 @@ class CineBottomNavBar extends StatelessWidget {
     return Expanded(
       child: InkWell(
         onTap: onTap,
-        splashColor: CineColors.gold.withOpacity(0.12),
+        splashColor: CineColors.gold.withValues(alpha: 0.12),
         highlightColor: Colors.transparent,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -172,7 +172,7 @@ class CineBottomNavBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: CineColors.gold.withOpacity(0.35),
+                    color: CineColors.gold.withValues(alpha: 0.35),
                     blurRadius: 10,
                     offset: const Offset(0, 2),
                   ),

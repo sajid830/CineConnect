@@ -1,14 +1,17 @@
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:cineconnect/features/auth/presentation/screens/login_screen.dart'
-    as feature_auth;
 import '../app/theme.dart';
 import '../services/landing_api_service.dart';
 import 'auth_screen.dart';
 import 'package:cineconnect/features/home/presentation/screens/home_screen.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
-  const RoleSelectionScreen({super.key});
+  final bool autoCheckHealth;
+
+  const RoleSelectionScreen({
+    super.key,
+    this.autoCheckHealth = true,
+  });
 
   @override
   State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
@@ -24,7 +27,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   @override
   void initState() {
     super.initState();
-    _checkLandingContext();
+    if (widget.autoCheckHealth) {
+      _checkLandingContext();
+    }
   }
 
   Future<void> _checkLandingContext() async {
@@ -44,24 +49,15 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     if (_loadingRole != null) return;
     setState(() => _loadingRole = roleType);
     try {
-      if (roleType == 'production') {
-        // Connect landing page to the existing Production House authentication interface
-        final goRouter = GoRouter.maybeOf(context);
-        if (goRouter != null) {
-          context.go('/login/production');
-        } else {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const _ProductionHouseHost(),
-            ),
-          );
-        }
+      final normalizedRole = (roleType == 'production') ? 'production' : 'talent';
+      final goRouter = GoRouter.maybeOf(context);
+      if (goRouter != null) {
+        context.go('/auth?role=$normalizedRole');
       } else {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => const AuthScreen(selectedRole: 'user'),
+            builder: (_) => AuthScreen(selectedRole: normalizedRole),
           ),
         );
       }
@@ -412,47 +408,4 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   }
 }
 
-/// Dedicated host wrapper providing the GoRouter environment required by
-/// the existing Production House [feature_auth.LoginScreen] and dashboard navigation.
-class _ProductionHouseHost extends StatelessWidget {
-  const _ProductionHouseHost();
 
-  @override
-  Widget build(BuildContext context) {
-    final router = GoRouter(
-      initialLocation: '/login/production',
-      routes: [
-        GoRoute(
-          path: '/login/:type',
-          name: 'production_login',
-          builder: (context, state) {
-            final type = state.pathParameters['type'] ?? 'production';
-            if (type == 'talent') {
-              return const AuthScreen(selectedRole: 'user');
-            }
-            return feature_auth.LoginScreen(userType: type);
-          },
-        ),
-        GoRoute(
-          path: '/',
-          name: 'landing',
-          builder: (context, state) => const RoleSelectionScreen(),
-        ),
-        GoRoute(
-          path: '/home',
-          name: 'production_home',
-          builder: (context, state) => const HomeScreen(
-            roleType: 'production',
-            userType: 'production',
-          ),
-        ),
-      ],
-    );
-
-    return MaterialApp.router(
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      routerConfig: router,
-    );
-  }
-}

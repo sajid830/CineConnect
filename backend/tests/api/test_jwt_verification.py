@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from app.core.config import settings
 from app.core.security import AsyncSupabaseJWKManager, create_test_token, verify_supabase_jwt
+from tests.conftest import TEST_HS256_SECRET, TEST_EC_KEY, TEST_EC_KID, create_test_jwt
 
 
 def _rsa_to_jwk(private_key: rsa.RSAPrivateKey, kid: str = "test-rsa-kid") -> Dict[str, Any]:
@@ -46,26 +47,87 @@ def _ec_to_jwk(private_key: ec.EllipticCurvePrivateKey, kid: str = "test-ec-kid"
 async def test_verify_hs256_success():
     """Valid HS256 token verification succeeds with payload."""
     user_id = uuid.uuid4()
-    token = create_test_token(user_id=user_id, email="talent@cineconnect.com")
-    payload = await verify_supabase_jwt(token)
+    with patch.object(settings, "SUPABASE_JWT_ALGORITHM", "HS256"), \
+         patch.object(settings, "SUPABASE_JWT_SECRET", TEST_HS256_SECRET):
+        token = create_test_token(
+            user_id=user_id,
+            email="talent@cineconnect.com",
+            algorithm="HS256",
+            signing_key=TEST_HS256_SECRET,
+        )
+        payload = await verify_supabase_jwt(token)
 
-    assert payload is not None
-    assert payload["sub"] == str(user_id)
-    assert payload["email"] == "talent@cineconnect.com"
-    assert payload["iss"] == settings.SUPABASE_JWT_ISSUER
-    assert payload["aud"] == settings.SUPABASE_JWT_AUDIENCE
+        assert payload is not None
+        assert payload["sub"] == str(user_id)
+        assert payload["email"] == "talent@cineconnect.com"
+        assert payload["iss"] == settings.SUPABASE_JWT_ISSUER
+        assert payload["aud"] == settings.SUPABASE_JWT_AUDIENCE
 
 
 @pytest.mark.asyncio
 async def test_verify_hs256_invalid_secret():
     """HS256 token signed with wrong secret is rejected."""
     user_id = uuid.uuid4()
-    token = create_test_token(
-        user_id=user_id,
-        signing_key="wrong_secret_key_12345678901234567890",
-    )
-    payload = await verify_supabase_jwt(token)
-    assert payload is None
+    with patch.object(settings, "SUPABASE_JWT_ALGORITHM", "HS256"), \
+         patch.object(settings, "SUPABASE_JWT_SECRET", TEST_HS256_SECRET):
+        token = create_test_token(
+            user_id=user_id,
+            algorithm="HS256",
+            signing_key="wrong_secret_key_12345678901234567890",
+        )
+        payload = await verify_supabase_jwt(token)
+        assert payload is None
+
+
+@pytest.mark.asyncio
+async def test_verify_es256_success():
+    """Valid ES256 token verification succeeds with payload using isolated test JWKS."""
+    user_id = uuid.uuid4()
+    with patch.object(settings, "SUPABASE_JWT_ALGORITHM", "ES256"):
+        token = create_test_jwt(
+            user_id=user_id,
+            email="talent_es256@cineconnect.com",
+            algorithm="ES256",
+        )
+        payload = await verify_supabase_jwt(token)
+
+        assert payload is not None
+        assert payload["sub"] == str(user_id)
+        assert payload["email"] == "talent_es256@cineconnect.com"
+        assert payload["iss"] == settings.SUPABASE_JWT_ISSUER
+        assert payload["aud"] == settings.SUPABASE_JWT_AUDIENCE
+
+
+@pytest.mark.asyncio
+async def test_verify_es256_invalid_signature():
+    """ES256 token signed with an untrusted EC key is rejected."""
+    user_id = uuid.uuid4()
+    untrusted_ec_key = ec.generate_private_key(ec.SECP256R1())
+    with patch.object(settings, "SUPABASE_JWT_ALGORITHM", "ES256"):
+        token = create_test_jwt(
+            user_id=user_id,
+            email="untrusted@cineconnect.com",
+            algorithm="ES256",
+            signing_key=untrusted_ec_key,
+            kid=TEST_EC_KID,
+        )
+        payload = await verify_supabase_jwt(token)
+        assert payload is None
+
+
+@pytest.mark.asyncio
+async def test_verify_es256_expired_token():
+    """ES256 token expired past clock skew leeway is rejected."""
+    user_id = uuid.uuid4()
+    with patch.object(settings, "SUPABASE_JWT_ALGORITHM", "ES256"):
+        token = create_test_jwt(
+            user_id=user_id,
+            email="expired_es256@cineconnect.com",
+            algorithm="ES256",
+            expires_in_seconds=-120,
+        )
+        payload = await verify_supabase_jwt(token)
+        assert payload is None
 
 
 @pytest.mark.asyncio
@@ -89,30 +151,38 @@ async def test_reject_algorithm_mismatch():
     """Reject token when header alg does not match configured SUPABASE_JWT_ALGORITHM."""
     user_id = uuid.uuid4()
     # Token signed with HS512 while config expects HS256
-    token = create_test_token(
-        user_id=user_id,
-        algorithm="HS512",
-        signing_key="test_secret_for_hs512_verification_test",
-    )
-    verified = await verify_supabase_jwt(token)
-    assert verified is None
+    with patch.object(settings, "SUPABASE_JWT_ALGORITHM", "HS256"), \
+         patch.object(settings, "SUPABASE_JWT_SECRET", TEST_HS256_SECRET):
+        token = create_test_token(
+            user_id=user_id,
+            algorithm="HS512",
+            signing_key="test_secret_for_hs512_verification_test_at_least_64_characters_long_1234",
+        )
+        verified = await verify_supabase_jwt(token)
+        assert verified is None
 
 
 @pytest.mark.asyncio
 async def test_reject_jku_and_x5u_headers():
     """Reject tokens that include jku or x5u headers to prevent header injection."""
     user_id = uuid.uuid4()
-    token_jku = create_test_token(
-        user_id=user_id,
-        headers={"jku": "https://attacker.com/jwks.json"},
-    )
-    assert await verify_supabase_jwt(token_jku) is None
+    with patch.object(settings, "SUPABASE_JWT_ALGORITHM", "HS256"), \
+         patch.object(settings, "SUPABASE_JWT_SECRET", TEST_HS256_SECRET):
+        token_jku = create_test_token(
+            user_id=user_id,
+            algorithm="HS256",
+            signing_key=TEST_HS256_SECRET,
+            headers={"jku": "https://attacker.com/jwks.json"},
+        )
+        assert await verify_supabase_jwt(token_jku) is None
 
-    token_x5u = create_test_token(
-        user_id=user_id,
-        headers={"x5u": "https://attacker.com/cert.pem"},
-    )
-    assert await verify_supabase_jwt(token_x5u) is None
+        token_x5u = create_test_token(
+            user_id=user_id,
+            algorithm="HS256",
+            signing_key=TEST_HS256_SECRET,
+            headers={"x5u": "https://attacker.com/cert.pem"},
+        )
+        assert await verify_supabase_jwt(token_x5u) is None
 
 
 @pytest.mark.asyncio
@@ -120,18 +190,32 @@ async def test_reject_expired_token():
     """Reject token expired past clock skew leeway."""
     user_id = uuid.uuid4()
     # Expired 120 seconds ago (> 60s leeway)
-    token = create_test_token(user_id=user_id, expires_in_seconds=-120)
-    assert await verify_supabase_jwt(token) is None
+    with patch.object(settings, "SUPABASE_JWT_ALGORITHM", "HS256"), \
+         patch.object(settings, "SUPABASE_JWT_SECRET", TEST_HS256_SECRET):
+        token = create_test_token(
+            user_id=user_id,
+            algorithm="HS256",
+            signing_key=TEST_HS256_SECRET,
+            expires_in_seconds=-120,
+        )
+        assert await verify_supabase_jwt(token) is None
 
 
 @pytest.mark.asyncio
 async def test_accept_token_within_clock_skew_leeway():
     """Accept token expired 30 seconds ago within 60s clock skew leeway."""
     user_id = uuid.uuid4()
-    token = create_test_token(user_id=user_id, expires_in_seconds=-30)
-    payload = await verify_supabase_jwt(token)
-    assert payload is not None
-    assert payload["sub"] == str(user_id)
+    with patch.object(settings, "SUPABASE_JWT_ALGORITHM", "HS256"), \
+         patch.object(settings, "SUPABASE_JWT_SECRET", TEST_HS256_SECRET):
+        token = create_test_token(
+            user_id=user_id,
+            algorithm="HS256",
+            signing_key=TEST_HS256_SECRET,
+            expires_in_seconds=-30,
+        )
+        payload = await verify_supabase_jwt(token)
+        assert payload is not None
+        assert payload["sub"] == str(user_id)
 
 
 @pytest.mark.asyncio
@@ -145,25 +229,27 @@ async def test_reject_missing_required_claims():
         "exp": now + 3600,
     }
 
-    # Missing exp
-    claims_no_exp = {k: v for k, v in base_claims.items() if k != "exp"}
-    token = jwt.encode(claims_no_exp, settings.SUPABASE_JWT_SECRET, algorithm="HS256")
-    assert await verify_supabase_jwt(token) is None
+    with patch.object(settings, "SUPABASE_JWT_ALGORITHM", "HS256"), \
+         patch.object(settings, "SUPABASE_JWT_SECRET", TEST_HS256_SECRET):
+        # Missing exp
+        claims_no_exp = {k: v for k, v in base_claims.items() if k != "exp"}
+        token = jwt.encode(claims_no_exp, TEST_HS256_SECRET, algorithm="HS256")
+        assert await verify_supabase_jwt(token) is None
 
-    # Missing iss
-    claims_no_iss = {k: v for k, v in base_claims.items() if k != "iss"}
-    token = jwt.encode(claims_no_iss, settings.SUPABASE_JWT_SECRET, algorithm="HS256")
-    assert await verify_supabase_jwt(token) is None
+        # Missing iss
+        claims_no_iss = {k: v for k, v in base_claims.items() if k != "iss"}
+        token = jwt.encode(claims_no_iss, TEST_HS256_SECRET, algorithm="HS256")
+        assert await verify_supabase_jwt(token) is None
 
-    # Missing aud
-    claims_no_aud = {k: v for k, v in base_claims.items() if k != "aud"}
-    token = jwt.encode(claims_no_aud, settings.SUPABASE_JWT_SECRET, algorithm="HS256")
-    assert await verify_supabase_jwt(token) is None
+        # Missing aud
+        claims_no_aud = {k: v for k, v in base_claims.items() if k != "aud"}
+        token = jwt.encode(claims_no_aud, TEST_HS256_SECRET, algorithm="HS256")
+        assert await verify_supabase_jwt(token) is None
 
-    # Missing sub
-    claims_no_sub = {k: v for k, v in base_claims.items() if k != "sub"}
-    token = jwt.encode(claims_no_sub, settings.SUPABASE_JWT_SECRET, algorithm="HS256")
-    assert await verify_supabase_jwt(token) is None
+        # Missing sub
+        claims_no_sub = {k: v for k, v in base_claims.items() if k != "sub"}
+        token = jwt.encode(claims_no_sub, TEST_HS256_SECRET, algorithm="HS256")
+        assert await verify_supabase_jwt(token) is None
 
 
 @pytest.mark.asyncio
@@ -171,26 +257,36 @@ async def test_reject_mismatched_iss_and_aud():
     """Reject tokens where issuer or audience does not match server configuration."""
     user_id = uuid.uuid4()
 
-    token_wrong_iss = create_test_token(
-        user_id=user_id,
-        extra_claims={"iss": "https://malicious-issuer.supabase.co/auth/v1"},
-    )
-    assert await verify_supabase_jwt(token_wrong_iss) is None
+    with patch.object(settings, "SUPABASE_JWT_ALGORITHM", "HS256"), \
+         patch.object(settings, "SUPABASE_JWT_SECRET", TEST_HS256_SECRET):
+        token_wrong_iss = create_test_token(
+            user_id=user_id,
+            algorithm="HS256",
+            signing_key=TEST_HS256_SECRET,
+            extra_claims={"iss": "https://malicious-issuer.supabase.co/auth/v1"},
+        )
+        assert await verify_supabase_jwt(token_wrong_iss) is None
 
-    token_wrong_aud = create_test_token(
-        user_id=user_id,
-        extra_claims={"aud": "other-audience"},
-    )
-    assert await verify_supabase_jwt(token_wrong_aud) is None
+        token_wrong_aud = create_test_token(
+            user_id=user_id,
+            algorithm="HS256",
+            signing_key=TEST_HS256_SECRET,
+            extra_claims={"aud": "other-audience"},
+        )
+        assert await verify_supabase_jwt(token_wrong_aud) is None
 
 
 @pytest.mark.asyncio
 async def test_reject_invalid_uuid_sub():
     """Reject tokens where sub claim is not a valid UUID string."""
-    token = create_test_token(
-        user_id="not-a-valid-uuid",
-    )
-    assert await verify_supabase_jwt(token) is None
+    with patch.object(settings, "SUPABASE_JWT_ALGORITHM", "HS256"), \
+         patch.object(settings, "SUPABASE_JWT_SECRET", TEST_HS256_SECRET):
+        token = create_test_token(
+            user_id="not-a-valid-uuid",
+            algorithm="HS256",
+            signing_key=TEST_HS256_SECRET,
+        )
+        assert await verify_supabase_jwt(token) is None
 
 
 @pytest.mark.asyncio

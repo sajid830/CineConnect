@@ -1,5 +1,6 @@
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:cineconnect/app/app.dart';
 import 'package:cineconnect/main.dart';
 
 void main() {
@@ -28,26 +29,10 @@ void main() {
     expect(find.text('Welcome Back'), findsOneWidget);
     expect(find.text('Sign In'), findsWidgets);
 
-    // 3. Tap Sign In button -> navigates to HomeScreen for Talent
+    // 3. Tap Sign In button without credentials -> verifies validation
     await tester.tap(find.widgetWithText(ElevatedButton, 'Sign In'));
     await tester.pumpAndSettle();
 
-    // Verify HomeScreen contents for Talent
-    expect(find.text('Welcome back, Actor!'), findsOneWidget);
-    expect(find.text('Upload Reel'), findsOneWidget);
-    expect(find.text('Find Auditions'), findsOneWidget);
-    expect(find.text('Recent Applications'), findsOneWidget);
-
-    // Verify BottomNavigationBar items
-    expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Search'), findsOneWidget);
-    expect(find.text('Jobs'), findsOneWidget);
-    expect(find.text('Chat'), findsOneWidget);
-    expect(find.text('Profile'), findsOneWidget);
-
-    // Tap on Search tab
-    await tester.tap(find.text('Search'));
-    await tester.pumpAndSettle();
-    expect(find.text('Search Module (AI/ML)'), findsOneWidget);
+    expect(find.text('Please enter both email and password.'), findsOneWidget);
   });
 }

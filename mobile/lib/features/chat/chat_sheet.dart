@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/state/app_state.dart';
 
@@ -532,7 +532,7 @@ class _ChatSheetState extends State<ChatSheet> {
                         style: TextStyle(
                           fontSize: 9.5,
                           color: msg.isMe
-                              ? Colors.black.withOpacity(0.55)
+                              ? Colors.black.withValues(alpha: 0.55)
                               : CineColors.textMuted,
                         ),
                       ),

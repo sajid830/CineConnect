@@ -15,7 +15,7 @@ class EnvConfig {
   final String apiBaseUrl;
   final String appName;
   final String supabaseUrl;
-  final String supabaseAnonKey;
+  final String supabasePublishableKey;
   final int connectTimeoutMs;
   final int receiveTimeoutMs;
 
@@ -23,24 +23,66 @@ class EnvConfig {
     required this.environment,
     required this.apiBaseUrl,
     required this.appName,
-    this.supabaseUrl = 'https://nwdzdyrdwdneottrszhc.supabase.co',
-    this.supabaseAnonKey = 'sb_publishable_mSCgNDJiH5o-xZEzK3KXrg_F4Zn7hgH',
+    this.supabaseUrl = '',
+    this.supabasePublishableKey = '',
     this.connectTimeoutMs = 15000,
     this.receiveTimeoutMs = 15000,
   });
+
+  /// Backward-compatibility alias for [supabasePublishableKey].
+  String get supabaseAnonKey => supabasePublishableKey;
+
+  /// Whether valid Supabase configuration has been provided via compile-time variables.
+  bool get isSupabaseConfigured =>
+      supabaseUrl.isNotEmpty && supabasePublishableKey.isNotEmpty;
+
+  /// Returns missing Supabase configuration keys without exposing credentials.
+  List<String> get missingSupabaseVariables {
+    final missing = <String>[];
+    if (supabaseUrl.isEmpty) missing.add('SUPABASE_URL');
+    if (supabasePublishableKey.isEmpty) {
+      missing.add('SUPABASE_PUBLISHABLE_KEY');
+    }
+    return missing;
+  }
+
+  /// Canonical mobile deep-link scheme and host for Supabase authentication callbacks.
+  static const String mobileAuthCallbackScheme = 'cineconnect';
+  static const String mobileAuthCallbackHost = 'auth-callback';
+  static const String mobileAuthCallbackUri = 'cineconnect://auth-callback';
+
+  /// Authoritative authentication callback URI.
+  ///
+  /// On mobile platforms (Android/iOS): returns [mobileAuthCallbackUri].
+  /// On web: uses the browser origin with custom query parameters for tab sync.
+  static String authCallbackUrl({bool isRecovery = false}) {
+    if (kIsWeb) {
+      final param = isRecovery ? 'recovery=true' : 'confirmed=true';
+      return '${Uri.base.origin}/?$param';
+    }
+    return mobileAuthCallbackUri;
+  }
+
+  /// Validates whether an incoming URI is a trusted authentication callback for CineConnect.
+  static bool isTrustedAuthCallback(Uri uri) {
+    if (kIsWeb) return true;
+    return uri.scheme.toLowerCase() == mobileAuthCallbackScheme &&
+        uri.host.toLowerCase() == mobileAuthCallbackHost;
+  }
 
   /// Factory to construct configuration from compile-time environment variables.
   static EnvConfig fromEnvironment() {
     const rawEnv = String.fromEnvironment('APP_ENV', defaultValue: 'local');
     const rawApiUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     const appName = String.fromEnvironment('APP_NAME', defaultValue: 'CineConnect');
-    const rawSupabaseUrl = String.fromEnvironment(
-      'SUPABASE_URL',
-      defaultValue: 'https://nwdzdyrdwdneottrszhc.supabase.co',
-    );
-    const rawSupabaseAnonKey = String.fromEnvironment(
-      'SUPABASE_ANON_KEY',
-      defaultValue: 'sb_publishable_mSCgNDJiH5o-xZEzK3KXrg_F4Zn7hgH',
+
+    // Read SUPABASE_URL without any hardcoded fallback
+    const rawSupabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: '');
+
+    // Read SUPABASE_PUBLISHABLE_KEY with fallback to legacy SUPABASE_ANON_KEY define
+    const rawSupabaseKey = String.fromEnvironment(
+      'SUPABASE_PUBLISHABLE_KEY',
+      defaultValue: String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: ''),
     );
 
     final environment = _parseEnvironment(rawEnv);
@@ -52,8 +94,8 @@ class EnvConfig {
       environment: environment,
       apiBaseUrl: apiBaseUrl,
       appName: appName,
-      supabaseUrl: rawSupabaseUrl,
-      supabaseAnonKey: rawSupabaseAnonKey,
+      supabaseUrl: rawSupabaseUrl.trim(),
+      supabasePublishableKey: rawSupabaseKey.trim(),
     );
   }
 

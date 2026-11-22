@@ -1,7 +1,9 @@
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../app/theme.dart';
-import 'package:cineconnect/features/home/presentation/screens/home_screen.dart';
+import 'package:cineconnect/features/talent/presentation/talent_portal_screen.dart';
+import 'package:cineconnect/features/production_house/dashboard/dashboard_screen.dart';
 
 class VerificationScreen extends StatefulWidget {
   final String email;
@@ -28,13 +30,39 @@ class _VerificationScreenState extends State<VerificationScreen> {
       );
 
       if (response.session != null && mounted) {
-        // Success: Proceed to Home Screen
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-              builder: (_) => HomeScreen(roleType: widget.roleType)),
-          (route) => false,
-        );
+        final role = widget.roleType.toLowerCase().trim();
+        final goRouter = GoRouter.maybeOf(context);
+        if (role == 'production' ||
+            role == 'production_house' ||
+            role == 'production_hub') {
+          if (goRouter != null) {
+            context.go('/production-house');
+          } else {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const DashboardScreen()),
+              (route) => false,
+            );
+          }
+        } else if (role == 'talent' || role == 'user') {
+          if (goRouter != null) {
+            context.go('/talent');
+          } else {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const TalentPortalScreen()),
+              (route) => false,
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'Unrecognized account role: "${widget.roleType}". Please contact support.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
       }
     } on AuthException catch (e) {
       if (mounted) {

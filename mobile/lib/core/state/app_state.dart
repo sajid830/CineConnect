@@ -3,7 +3,7 @@ import '../models/craft_models.dart';
 import '../services/talent_api_service.dart';
 
 class CineAppState extends ChangeNotifier {
-  final TalentApiService _apiService = TalentApiService();
+  final TalentApiService _apiService;
 
   int _activeNavIndex = 0; // 0: Home/Feed, 1: Discover/Reels, 2: Opportunities/Jobs, 3: Network/Radar, 4: Slate/Profile
   OnSetStory? _activeViewedStory;
@@ -30,8 +30,11 @@ class CineAppState extends ChangeNotifier {
   String get activeHubFilter => _activeHubFilter;
   Set<String> get userSkills => Set.unmodifiable(_userSkills);
 
-  CineAppState() {
-    _initConnectivityCheck();
+  CineAppState({TalentApiService? apiService, bool autoCheckConnectivity = true})
+      : _apiService = apiService ?? TalentApiService() {
+    if (autoCheckConnectivity) {
+      _initConnectivityCheck();
+    }
   }
 
   Future<void> _initConnectivityCheck() async {

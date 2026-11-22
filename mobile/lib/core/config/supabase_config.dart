@@ -1,16 +1,12 @@
-/// Supabase project configuration credentials.
+import 'env_config.dart';
+
+/// Legacy Supabase configuration accessor.
+/// Delegated directly to [EnvConfig] to maintain a single authoritative configuration source.
 class SupabaseConfig {
   SupabaseConfig._();
 
-  static const String url = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: 'https://nwdzdyrdwdneottrszhc.supabase.co',
-  );
-
-  static const String anonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue: 'sb_publishable_mSCgNDJiH5o-xZEzK3KXrg_F4Zn7hgH',
-  );
-
-  static const String key = anonKey;
+  static String get url => EnvConfig.fromEnvironment().supabaseUrl;
+  static String get publishableKey => EnvConfig.fromEnvironment().supabasePublishableKey;
+  static String get anonKey => publishableKey;
+  static String get key => publishableKey;
 }
