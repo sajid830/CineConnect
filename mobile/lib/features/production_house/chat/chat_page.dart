@@ -60,7 +60,7 @@ class ChatPage extends ConsumerWidget {
             final t = c.talent;
             return InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: () => context.push('/chat/${c.id}'),
+              onTap: () => context.push('/ph-chat?collaborationId=${c.id}'),
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(

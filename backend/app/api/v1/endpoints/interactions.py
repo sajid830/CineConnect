@@ -23,21 +23,37 @@ async def create_interaction(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Add a like or comment to a post."""
+    """Add a like or comment with optional SMPTE timecode to a post."""
     post_res = await db.execute(select(Post).where(Post.id == interaction_in.post_id))
     post = post_res.scalar_one_or_none()
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    # If it is a like, prevent duplicates
+    if interaction_in.type == "like":
+        existing_like_res = await db.execute(
+            select(Interaction).where(
+                Interaction.post_id == interaction_in.post_id,
+                Interaction.user_id == current_user.id,
+                Interaction.type == "like",
+            )
+        )
+        existing_like = existing_like_res.scalar_one_or_none()
+        if existing_like:
+            existing_like.user = current_user
+            return existing_like
 
     interaction = Interaction(
         post_id=interaction_in.post_id,
         user_id=current_user.id,
         type=interaction_in.type,
         comment=interaction_in.comment,
+        timecode=interaction_in.timecode,
     )
     db.add(interaction)
     await db.commit()
     await db.refresh(interaction)
+    interaction.user = current_user
     return interaction
 
 

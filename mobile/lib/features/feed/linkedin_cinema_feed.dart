@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/state/app_state.dart';
+import '../stories/story_status_bar.dart';
 
 class LinkedInCinemaFeed extends StatefulWidget {
   final CineAppState appState;
@@ -13,13 +14,34 @@ class LinkedInCinemaFeed extends StatefulWidget {
 }
 
 class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
+  late final ScrollController _scrollController;
+  final Set<String> _pendingLikeToggles = {};
+
   // Map of post IDs to their current aspect ratio (2.39:1 vs 16:9)
   final Map<String, bool> _isScopeMode = {};
-  // Map of post IDs to like state
-  final Map<String, bool> _likedPosts = {};
-
   final Map<String, bool> _followedAuthors = {};
   final Map<String, bool> _bookmarkedPosts = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController()..addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.hasClients &&
+        _scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 300) {
+      widget.appState.loadMoreFeedPosts();
+    }
+  }
 
   void _showTimecodeCritiqueDialog(CineFeedPost post) {
     final tcController = TextEditingController(text: post.smpteTimecode);
@@ -37,7 +59,8 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
           children: [
             Icon(Icons.timer_outlined, color: CineColors.gold, size: 20),
             SizedBox(width: 8),
-            Text('Pin SMPTE Timecode Critique', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            Text('Pin SMPTE Timecode Critique',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
           ],
         ),
         content: Column(
@@ -45,16 +68,19 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Post: ${post.authorName} • ${post.videoSlateTitle}',
-                style: const TextStyle(fontSize: 12, color: CineColors.textMuted)),
+                style:
+                    const TextStyle(fontSize: 12, color: CineColors.textMuted)),
             const SizedBox(height: 12),
             const Text('Frame-Accurate Timecode (SMPTE 24fps):',
                 style: TextStyle(fontSize: 11.5, color: CineColors.gold)),
             const SizedBox(height: 4),
             TextField(
               controller: tcController,
-              style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                  fontFamily: 'monospace', fontWeight: FontWeight.bold),
               decoration: const InputDecoration(
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               ),
             ),
             const SizedBox(height: 12),
@@ -65,7 +91,8 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
               controller: noteController,
               maxLines: 3,
               decoration: const InputDecoration(
-                hintText: 'e.g. Masterful shadow density at T2.0; subtle blue flare roll-off.',
+                hintText:
+                    'e.g. Masterful shadow density at T2.0; subtle blue flare roll-off.',
                 contentPadding: EdgeInsets.all(12),
               ),
             ),
@@ -74,16 +101,22 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: CineColors.textMuted)),
+            child: const Text('Cancel',
+                style: TextStyle(color: CineColors.textMuted)),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.of(ctx).pop();
+              final note = noteController.text.trim();
+              final tc = tcController.text.trim();
+              if (note.isNotEmpty) {
+                widget.appState.addCommentToPost(post.id, note, timecode: tc);
+              }
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   backgroundColor: CineColors.surfaceElevated,
                   content: Text(
-                    'Timecode critique pinned at ${tcController.text} on 24fps Master Ledger!',
+                    'Timecode critique pinned at $tc on 24fps Master Ledger!',
                     style: const TextStyle(color: CineColors.gold),
                   ),
                 ),
@@ -98,15 +131,26 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.only(top: 8, bottom: 24),
-      children: [
+    return RefreshIndicator(
+      color: CineColors.gold,
+      backgroundColor: CineColors.surfaceElevated,
+      onRefresh: () => widget.appState.loadFeedPosts(refresh: true),
+      child: ListView(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 8, bottom: 24),
+        children: [
+        // 24h Ephemeral On-Set Stories
+        StoryStatusBar(state: widget.appState),
+        const SizedBox(height: 4),
+
         // Section Header matching Screenshot 1
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
           child: Row(
             children: [
-              const Icon(Icons.movie_filter_outlined, color: CineColors.gold, size: 18),
+              const Icon(Icons.movie_filter_outlined,
+                  color: CineColors.gold, size: 18),
               const SizedBox(width: 8),
               const Text(
                 'Talent Activity & Showreels',
@@ -141,9 +185,9 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
         // Posts List
         ...widget.appState.feedPosts.map((post) {
           final isScope = _isScopeMode[post.id] ?? true;
-          final isLiked = _likedPosts[post.id] ?? false;
+          final isLiked = post.isLiked;
           final isFollowed = _followedAuthors[post.id] ?? false;
-          final isBookmarked = _bookmarkedPosts[post.id] ?? false;
+          final isBookmarked = _bookmarkedPosts[post.id] ?? post.isBookmarked;
 
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -167,7 +211,9 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                         backgroundColor: CineColors.surfaceElevated,
                         child: Text(
                           post.authorAvatar,
-                          style: const TextStyle(fontWeight: FontWeight.w800, color: CineColors.gold),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: CineColors.gold),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -191,14 +237,20 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                                 ),
                                 const SizedBox(width: 6),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: Colors.transparent,
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: CineColors.gold.withValues(alpha: 0.6), width: 0.8),
+                                    border: Border.all(
+                                        color: CineColors.gold
+                                            .withValues(alpha: 0.6),
+                                        width: 0.8),
                                   ),
                                   child: Text(
-                                    post.id == 'post-1' ? 'Method Actress' : 'Lead Actor & Stunts',
+                                    post.id == 'post-1'
+                                        ? 'Method Actress'
+                                        : 'Lead Actor & Stunts',
                                     style: const TextStyle(
                                       fontSize: 9.5,
                                       fontWeight: FontWeight.w700,
@@ -211,7 +263,8 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                             const SizedBox(height: 2),
                             Text(
                               post.id == 'post-1' ? '2h ago' : '5h ago',
-                              style: const TextStyle(fontSize: 11, color: CineColors.textMuted),
+                              style: const TextStyle(
+                                  fontSize: 11, color: CineColors.textMuted),
                             ),
                           ],
                         ),
@@ -226,25 +279,31 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                         },
                         borderRadius: BorderRadius.circular(20),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: isFollowed ? CineColors.gold : Colors.transparent,
+                            color: isFollowed
+                                ? CineColors.gold
+                                : Colors.transparent,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: CineColors.gold, width: 0.9),
+                            border:
+                                Border.all(color: CineColors.gold, width: 0.9),
                           ),
                           child: Text(
                             isFollowed ? 'Following' : '+ Follow',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
-                              color: isFollowed ? Colors.black : CineColors.gold,
+                              color:
+                                  isFollowed ? Colors.black : CineColors.gold,
                             ),
                           ),
                         ),
                       ),
                       const SizedBox(width: 4),
                       IconButton(
-                        icon: const Icon(Icons.more_horiz_rounded, color: CineColors.textMuted),
+                        icon: const Icon(Icons.more_horiz_rounded,
+                            color: CineColors.textMuted),
                         onPressed: () {},
                       ),
                     ],
@@ -294,14 +353,20 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                               top: 10,
                               left: 10,
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
                                   color: Colors.black.withValues(alpha: 0.7),
                                   borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: CineColors.gold.withValues(alpha: 0.7), width: 0.8),
+                                  border: Border.all(
+                                      color: CineColors.gold
+                                          .withValues(alpha: 0.7),
+                                      width: 0.8),
                                 ),
                                 child: Text(
-                                  post.id == 'post-1' ? 'WRAP PARTY & BTS' : 'AUDITION PREPARATION',
+                                  post.id == 'post-1'
+                                      ? 'WRAP PARTY & BTS'
+                                      : 'AUDITION PREPARATION',
                                   style: const TextStyle(
                                     fontSize: 9.5,
                                     fontWeight: FontWeight.w800,
@@ -320,9 +385,11 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                                   height: 44,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: CineColors.gold.withValues(alpha: 0.85),
+                                    color:
+                                        CineColors.gold.withValues(alpha: 0.85),
                                   ),
-                                  child: const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 28),
+                                  child: const Icon(Icons.play_arrow_rounded,
+                                      color: Colors.black, size: 28),
                                 ),
                               ],
                             ),
@@ -332,7 +399,8 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                               left: 0,
                               right: 0,
                               child: Container(
-                                padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
+                                padding:
+                                    const EdgeInsets.fromLTRB(12, 16, 12, 8),
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(
                                     begin: Alignment.topCenter,
@@ -383,21 +451,47 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                     children: [
                       // Heart Like
                       InkWell(
-                        onTap: () {
-                          setState(() {
-                            _likedPosts[post.id] = !isLiked;
-                          });
-                        },
+                        onTap: _pendingLikeToggles.contains(post.id)
+                            ? null
+                            : () async {
+                                setState(() {
+                                  _pendingLikeToggles.add(post.id);
+                                });
+                                try {
+                                  await widget.appState.toggleLikePost(post.id);
+                                } catch (_) {
+                                  if (mounted && context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        backgroundColor: CineColors.surfaceElevated,
+                                        content: Text(
+                                          'Failed to update like status. Please try again.',
+                                          style: TextStyle(color: CineColors.error),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                } finally {
+                                  if (mounted) {
+                                    setState(() {
+                                      _pendingLikeToggles.remove(post.id);
+                                    });
+                                  }
+                                }
+                              },
                         child: Row(
                           children: [
                             Icon(
-                              isLiked ? Icons.favorite_rounded : Icons.favorite_rounded,
+                              isLiked
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
                               size: 20,
-                              color: CineColors.gold,
+                              color:
+                                  isLiked ? CineColors.error : CineColors.gold,
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              '${(post.id == 'post-1' ? 142 : 98) + (isLiked ? 1 : 0)}',
+                              '${post.likes}',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
@@ -421,7 +515,7 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              post.id == 'post-1' ? '3' : '2',
+                              '${post.comments}',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
@@ -460,11 +554,15 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                         onTap: () => _showCrewLedgerBottomSheet(context, post),
                         child: Row(
                           children: [
-                            const Icon(Icons.people_outline_rounded, size: 16, color: CineColors.gold),
+                            const Icon(Icons.people_outline_rounded,
+                                size: 16, color: CineColors.gold),
                             const SizedBox(width: 4),
                             Text(
                               'Crew (${post.taggedCrafts.length})',
-                              style: const TextStyle(fontSize: 11, color: CineColors.gold, fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: CineColors.gold,
+                                  fontWeight: FontWeight.w600),
                             ),
                           ],
                         ),
@@ -477,11 +575,16 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                           setState(() {
                             _bookmarkedPosts[post.id] = !isBookmarked;
                           });
+                          widget.appState.toggleBookmarkPost(post.id);
                         },
                         child: Icon(
-                          isBookmarked ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                          isBookmarked
+                              ? Icons.bookmark_rounded
+                              : Icons.bookmark_border_rounded,
                           size: 21,
-                          color: isBookmarked ? CineColors.gold : CineColors.textMuted,
+                          color: isBookmarked
+                              ? CineColors.gold
+                              : CineColors.textMuted,
                         ),
                       ),
                     ],
@@ -491,8 +594,61 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
             ),
           );
         }),
+
+        // Pagination state indicators
+        if (widget.appState.isLoadingMoreFeed)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(CineColors.gold),
+                ),
+              ),
+            ),
+          )
+        else if (widget.appState.feedPaginationError != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+            child: Column(
+              children: [
+                Text(
+                  widget.appState.feedPaginationError!,
+                  style: const TextStyle(color: CineColors.error, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () => widget.appState.loadMoreFeedPosts(),
+                  icon: const Icon(Icons.refresh_rounded, size: 16, color: CineColors.gold),
+                  label: const Text(
+                    'Retry Loading Feed',
+                    style: TextStyle(
+                      color: CineColors.gold,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (!widget.appState.hasMoreFeed && widget.appState.feedPosts.length >= 20)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text(
+                "You're all caught up on the Cinema Feed",
+                style: TextStyle(color: CineColors.textMuted, fontSize: 11),
+              ),
+            ),
+          ),
       ],
-    );
+    ),
+  );
   }
 
   void _showCrewLedgerBottomSheet(BuildContext context, CineFeedPost post) {
@@ -514,7 +670,10 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Verified Crew Credits Ledger',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: CineColors.gold)),
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: CineColors.gold)),
                   IconButton(
                     icon: const Icon(Icons.close, color: CineColors.textMuted),
                     onPressed: () => Navigator.of(ctx).pop(),
@@ -523,8 +682,10 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
               ),
               const SizedBox(height: 12),
               _crewCreditRow('Director', 'Karthik Subbaraj', 'DGA Verified'),
-              _crewCreditRow('Cinematographer (DOP)', 'Maya Ray', 'ISC-9021 Verified'),
-              _crewCreditRow('1st AC / Focus Puller', 'Rohan Patel', 'SICA-4401'),
+              _crewCreditRow(
+                  'Cinematographer (DOP)', 'Maya Ray', 'ISC-9021 Verified'),
+              _crewCreditRow(
+                  '1st AC / Focus Puller', 'Rohan Patel', 'SICA-4401'),
               _crewCreditRow('Gaffer', 'Venkatesh Rao', 'Chief Tech Lighting'),
               _crewCreditRow('Colorist', 'Sameer Verma', 'DaVinci Certified'),
             ],
@@ -543,8 +704,14 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(role, style: const TextStyle(fontSize: 11, color: CineColors.textMuted)),
-              Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: CineColors.textPrimary)),
+              Text(role,
+                  style: const TextStyle(
+                      fontSize: 11, color: CineColors.textMuted)),
+              Text(name,
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: CineColors.textPrimary)),
             ],
           ),
           Container(
@@ -554,7 +721,8 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
               borderRadius: BorderRadius.circular(4),
               border: Border.all(color: CineColors.border),
             ),
-            child: Text(badge, style: const TextStyle(fontSize: 10, color: CineColors.gold)),
+            child: Text(badge,
+                style: const TextStyle(fontSize: 10, color: CineColors.gold)),
           ),
         ],
       ),

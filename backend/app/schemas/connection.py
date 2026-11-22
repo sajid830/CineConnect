@@ -1,6 +1,8 @@
 from datetime import datetime
+from typing import Optional
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
+from app.schemas.user import TalentSummaryResponse
 
 
 class ConnectionCreate(BaseModel):
@@ -14,5 +16,7 @@ class ConnectionResponse(BaseModel):
     sender_id: UUID
     receiver_id: UUID
     status: str
+    sender: Optional[TalentSummaryResponse] = None
+    receiver: Optional[TalentSummaryResponse] = None
     created_at: datetime
     updated_at: datetime

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.api.dependencies import get_current_user
+from app.api.websocket import manager
 from app.models.user import User
 from app.models.message import Message
 from app.schemas.message import (
@@ -45,6 +46,21 @@ async def send_message(
     db.add(message)
     await db.commit()
     await db.refresh(message)
+
+    # Broadcast new message event to recipient if connected via WebSocket
+    try:
+        outgoing_data = {
+            "event": "new_message",
+            "message_id": str(message.id),
+            "sender_id": str(current_user.id),
+            "recipient_id": str(msg_in.recipient_id),
+            "body": message.body,
+            "created_at": message.created_at.isoformat(),
+        }
+        await manager.send_personal_message(outgoing_data, msg_in.recipient_id)
+    except Exception:
+        pass
+
     return message
 
 

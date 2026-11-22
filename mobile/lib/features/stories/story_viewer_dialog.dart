@@ -1,19 +1,193 @@
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
+import '../../core/state/app_state.dart';
 
-class OnSetStoryViewerDialog extends StatelessWidget {
+class OnSetStoryViewerDialog extends StatefulWidget {
   final OnSetStory story;
   final VoidCallback onClose;
+  final CineAppState? appState;
 
   const OnSetStoryViewerDialog({
     super.key,
     required this.story,
     required this.onClose,
+    this.appState,
   });
 
   @override
+  State<OnSetStoryViewerDialog> createState() => _OnSetStoryViewerDialogState();
+}
+
+class _OnSetStoryViewerDialogState extends State<OnSetStoryViewerDialog> {
+  VideoPlayerController? _videoController;
+  bool _isVideo = false;
+  bool _isInitialized = false;
+  bool _hasError = false;
+  bool _isRefreshingUrl = false;
+  String? _activeUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _activeUrl = widget.story.playbackUrl ?? widget.story.mediaUrl;
+    _checkAndInitMedia();
+  }
+
+  void _checkAndInitMedia() {
+    final url = _activeUrl ?? '';
+    if (url.isEmpty) return;
+
+    final lower = url.toLowerCase();
+    _isVideo = lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.webm') ||
+        lower.endsWith('.mkv') ||
+        lower.contains('video/');
+
+    if (_isVideo) {
+      _initVideoPlayer(url);
+    }
+  }
+
+  void _initVideoPlayer(String url) {
+    _videoController?.dispose();
+    _videoController = VideoPlayerController.networkUrl(Uri.parse(url));
+    _videoController!.initialize().then((_) {
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+          _hasError = false;
+        });
+        _videoController!.setLooping(true);
+        _videoController!.play();
+      }
+    }).catchError((err) async {
+      // If presigned URL expired or initialization failed, attempt to fetch fresh playback URL
+      if (!_isRefreshingUrl &&
+          widget.appState != null &&
+          widget.story.id.isNotEmpty &&
+          !widget.story.id.startsWith('story-') &&
+          !widget.story.id.startsWith('your-')) {
+        _isRefreshingUrl = true;
+        final freshUrl = await widget.appState!.getStoryPlaybackUrl(widget.story.id);
+        _isRefreshingUrl = false;
+        if (freshUrl != null && freshUrl.isNotEmpty && freshUrl != url && mounted) {
+          _activeUrl = freshUrl;
+          _initVideoPlayer(freshUrl);
+          return;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _isInitialized = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _videoController?.pause();
+    _videoController?.dispose();
+    super.dispose();
+  }
+
+  void _togglePlayPause() {
+    if (_videoController == null || !_isInitialized) return;
+    setState(() {
+      if (_videoController!.value.isPlaying) {
+        _videoController!.pause();
+      } else {
+        _videoController!.play();
+      }
+    });
+  }
+
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: CineColors.surfaceElevated,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: CineColors.border),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_forever_rounded, color: CineColors.error, size: 22),
+            SizedBox(width: 8),
+            Text(
+              'Delete Story?',
+              style: TextStyle(
+                color: CineColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to permanently remove this on-set story broadcast? This action cannot be undone.',
+          style: TextStyle(color: CineColors.textMuted, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: CineColors.textMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CineColors.error,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted && widget.appState != null) {
+      try {
+        await widget.appState!.deleteStory(widget.story.id);
+        widget.onClose();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: CineColors.surfaceElevated,
+              content: Text(
+                'Story deleted successfully.',
+                style: TextStyle(color: CineColors.gold),
+              ),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: CineColors.surfaceElevated,
+              content: Text(
+                'Failed to delete story: $e',
+                style: const TextStyle(color: CineColors.error),
+              ),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final myUserId = widget.appState?.myProfile?.id;
+    final isOwner = (myUserId != null && widget.story.userId == myUserId) ||
+        widget.story.creatorName == 'Your Story';
+
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
@@ -70,7 +244,7 @@ class OnSetStoryViewerDialog extends StatelessWidget {
                       radius: 18,
                       backgroundColor: CineColors.gold,
                       child: Text(
-                        story.initials,
+                        widget.story.initials,
                         style: const TextStyle(
                           color: Colors.black,
                           fontWeight: FontWeight.bold,
@@ -85,17 +259,21 @@ class OnSetStoryViewerDialog extends StatelessWidget {
                         children: [
                           Row(
                             children: [
-                              Text(
-                                story.creatorName,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: CineColors.textPrimary,
+                              Flexible(
+                                child: Text(
+                                  widget.story.creatorName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: CineColors.textPrimary,
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                '• ${story.timeAgo}',
+                                '• ${widget.story.timeAgo}',
                                 style: const TextStyle(
                                   fontSize: 11,
                                   color: CineColors.textMuted,
@@ -104,7 +282,7 @@ class OnSetStoryViewerDialog extends StatelessWidget {
                             ],
                           ),
                           Text(
-                            story.craftBadge,
+                            widget.story.craftBadge,
                             style: const TextStyle(
                               fontSize: 11,
                               color: CineColors.gold,
@@ -114,9 +292,15 @@ class OnSetStoryViewerDialog extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (isOwner && !widget.story.id.startsWith('your-'))
+                      IconButton(
+                        tooltip: 'Delete Story',
+                        icon: const Icon(Icons.delete_outline_rounded, color: CineColors.error, size: 20),
+                        onPressed: _confirmDelete,
+                      ),
                     IconButton(
                       icon: const Icon(Icons.close, color: CineColors.textPrimary),
-                      onPressed: onClose,
+                      onPressed: widget.onClose,
                     ),
                   ],
                 ),
@@ -140,7 +324,7 @@ class OnSetStoryViewerDialog extends StatelessWidget {
                         const Icon(Icons.location_on, size: 12, color: CineColors.gold),
                         const SizedBox(width: 4),
                         Text(
-                          story.location,
+                          widget.story.location,
                           style: const TextStyle(
                             fontSize: 11,
                             color: CineColors.textPrimary,
@@ -153,7 +337,7 @@ class OnSetStoryViewerDialog extends StatelessWidget {
                 ),
               ),
 
-              // Simulated Live Monitor Viewport
+              // Viewport Container with Real Media and Viewfinder Overlays
               Expanded(
                 child: Container(
                   margin: const EdgeInsets.all(16),
@@ -162,85 +346,197 @@ class OnSetStoryViewerDialog extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: CineColors.border),
                   ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Video Simulation Canvas
-                      Container(
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Color(0xFF1A1A24),
-                              Color(0xFF0E0E14),
-                            ],
-                          ),
-                        ),
-                      ),
-                      // Viewfinder Frame Lines
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: _ViewfinderOverlayPainter(),
-                        ),
-                      ),
-                      // Center Camera Info
-                      Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: GestureDetector(
+                      onTap: _isVideo ? _togglePlayPause : null,
+                      child: Stack(
+                        alignment: Alignment.center,
                         children: [
-                          const Icon(Icons.videocam_rounded, size: 48, color: CineColors.gold),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'SOUNDSTAGE LIVE FEED',
-                            style: TextStyle(
-                              color: CineColors.goldLight,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.5,
+                          // Base Media Layer
+                          if (_isVideo) ...[
+                            if (_isInitialized && _videoController != null)
+                              SizedBox.expand(
+                                child: FittedBox(
+                                  fit: BoxFit.cover,
+                                  child: SizedBox(
+                                    width: _videoController!.value.size.width,
+                                    height: _videoController!.value.size.height,
+                                    child: VideoPlayer(_videoController!),
+                                  ),
+                                ),
+                              )
+                            else if (_hasError)
+                              Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.videocam_off_rounded, color: CineColors.error, size: 40),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'Video unavailable or link expired',
+                                      style: TextStyle(color: CineColors.textMuted, fontSize: 12),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    TextButton.icon(
+                                      onPressed: () {
+                                        if (_activeUrl != null) _initVideoPlayer(_activeUrl!);
+                                      },
+                                      icon: const Icon(Icons.refresh_rounded, size: 16, color: CineColors.gold),
+                                      label: const Text('Retry', style: TextStyle(color: CineColors.gold, fontSize: 12)),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              const Center(
+                                child: SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(CineColors.gold),
+                                  ),
+                                ),
+                              ),
+                          ] else if (_activeUrl != null && _activeUrl!.isNotEmpty) ...[
+                            Image.network(
+                              _activeUrl!,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              loadingBuilder: (context, child, progress) {
+                                if (progress == null) return child;
+                                return const Center(
+                                  child: SizedBox(
+                                    width: 32,
+                                    height: 32,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(CineColors.gold),
+                                    ),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  color: const Color(0xFF14151C),
+                                  child: const Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.broken_image_rounded, color: CineColors.textMuted, size: 40),
+                                        SizedBox(height: 8),
+                                        Text('Image unavailable', style: TextStyle(color: CineColors.textMuted, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
-                          ),
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withValues(alpha: 0.85),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              '● REC  24 FPS  ISO 800  5600K',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                fontFamily: 'monospace',
+                          ] else ...[
+                            // Fallback cinematic canvas
+                            Container(
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Color(0xFF1A1A24),
+                                    Color(0xFF0E0E14),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      // Bottom Caption
-                      Positioned(
-                        bottom: 16,
-                        left: 16,
-                        right: 16,
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.75),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: CineColors.border),
-                          ),
-                          child: Text(
-                            story.storyCaption,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12.5,
-                              height: 1.4,
+                          ],
+
+                          // Overlay Layer 1: Viewfinder Frame Lines
+                          Positioned.fill(
+                            child: CustomPaint(
+                              painter: _ViewfinderOverlayPainter(),
                             ),
                           ),
-                        ),
+
+                          // Overlay Layer 2: Center Watermark & Play/Pause State
+                          if (!_isVideo || !_isInitialized || !_videoController!.value.isPlaying)
+                            Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                if (_isVideo && _isInitialized && !_videoController!.value.isPlaying)
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.6),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: CineColors.gold, width: 1.5),
+                                    ),
+                                    child: const Icon(Icons.play_arrow_rounded, size: 36, color: CineColors.gold),
+                                  )
+                                else
+                                  const Icon(Icons.videocam_rounded, size: 44, color: CineColors.gold),
+                                const SizedBox(height: 10),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.6),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    'SOUNDSTAGE LIVE FEED',
+                                    style: TextStyle(
+                                      color: CineColors.goldLight,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 1.5,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withValues(alpha: 0.85),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    '● REC  24 FPS  ISO 800  5600K',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                          // Overlay Layer 3: Bottom Caption
+                          if (widget.story.storyCaption.isNotEmpty)
+                            Positioned(
+                              bottom: 16,
+                              left: 16,
+                              right: 16,
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.75),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: CineColors.border),
+                                ),
+                                child: Text(
+                                  widget.story.storyCaption,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12.5,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),

@@ -192,7 +192,18 @@ async def get_production_house_dashboard(
     )
     total_collaborations = collab_res.scalar_one() or 0
 
-    # 8. Recent 5 opportunities
+    # 8. Shortlisted applications
+    shortlisted_res = await db.execute(
+        select(func.count(Application.id))
+        .join(Opportunity, Application.opportunity_id == Opportunity.id)
+        .where(
+            Opportunity.production_house_id == ph.id,
+            Application.status == "shortlisted",
+        )
+    )
+    shortlisted = shortlisted_res.scalar_one() or 0
+
+    # 9. Recent 5 opportunities
     recent_opp_stmt = (
         select(Opportunity)
         .where(Opportunity.production_house_id == ph.id)
@@ -213,6 +224,30 @@ async def get_production_house_dashboard(
         for opp in recent_opp_res.scalars().all()
     ]
 
+    # 10. Recent applications
+    recent_apps_stmt = (
+        select(Application)
+        .join(Opportunity, Application.opportunity_id == Opportunity.id)
+        .where(Opportunity.production_house_id == ph.id)
+        .order_by(Application.created_at.desc())
+        .limit(5)
+    )
+    recent_apps_res = await db.execute(recent_apps_stmt)
+    recent_applications = [
+        {
+            "id": str(app.id),
+            "opportunity_id": str(app.opportunity_id),
+            "talent_id": str(app.talent_id),
+            "status": app.status,
+            "reel_url": app.reel_url,
+            "resume_url": app.resume_url,
+            "cover_letter": app.cover_letter,
+            "applied_at": app.created_at.isoformat(),
+            "created_at": app.created_at.isoformat(),
+        }
+        for app in recent_apps_res.scalars().all()
+    ]
+
     return ProductionHouseDashboardResponse(
         total_projects=total_projects,
         active_projects=active_projects,
@@ -221,5 +256,9 @@ async def get_production_house_dashboard(
         total_applications_received=total_applications_received,
         pending_reviews=pending_reviews,
         total_collaborations=total_collaborations,
+        open_casting_calls=open_opportunities,
+        new_applications=pending_reviews,
+        shortlisted=shortlisted,
         recent_opportunities=recent_opportunities,
+        recent_applications=recent_applications,
     )

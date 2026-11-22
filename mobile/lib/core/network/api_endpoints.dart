@@ -25,10 +25,15 @@ class ApiEndpoints {
   static String userConnections(String userId) => '$apiPrefix/users/$userId/connections';
   static String userFollowers(String userId) => '$apiPrefix/users/$userId/followers';
   static String userFollowing(String userId) => '$apiPrefix/users/$userId/following';
+  static const String myFilmography = '$apiPrefix/users/me/filmography';
+  static String filmCreditDetails(String creditId) => '$apiPrefix/users/me/filmography/$creditId';
+  static String userFilmography(String userId) => '$apiPrefix/users/$userId/filmography';
 
   // ==========================================
-  // 3. Projects (Read-only for Talent)
+  // 3. Projects
   // ==========================================
+  static const String projectsCollection = '$apiPrefix/projects';
+  static const String myProjects = '$apiPrefix/projects/my';
   static const String listProjects = '$apiPrefix/projects';
   static String projectDetails(String projectId) => '$apiPrefix/projects/$projectId';
   static const String searchProjects = '$apiPrefix/projects/search';
@@ -39,7 +44,10 @@ class ApiEndpoints {
   // Note: Trailing slash required as reported in OpenAPI audit
   // ==========================================
   static const String opportunities = '$apiPrefix/opportunities/';
+  static const String myOpportunities = '$apiPrefix/opportunities/my';
   static String opportunityDetails(String oppId) => '$apiPrefix/opportunities/$oppId';
+  static String opportunityStatus(String oppId) => '$apiPrefix/opportunities/$oppId/status';
+  static String opportunityApplications(String oppId) => '$apiPrefix/opportunities/$oppId/applications';
   static const String searchOpportunities = '$apiPrefix/opportunities/search';
 
   // ==========================================
@@ -47,8 +55,12 @@ class ApiEndpoints {
   // Note: POST collection has trailing slash
   // ==========================================
   static const String applyOpportunity = '$apiPrefix/applications/';
+  static const String applicationsCollection = '$apiPrefix/applications/';
   static const String myApplications = '$apiPrefix/applications/my';
   static String applicationDetails(String appId) => '$apiPrefix/applications/$appId';
+  static String applicationStatus(String appId) => '$apiPrefix/applications/$appId/status';
+  static String applicationResumeDownloadUrl(String appId) => '$apiPrefix/applications/$appId/resume-download-url';
+  static String applicationReelDownloadUrl(String appId) => '$apiPrefix/applications/$appId/reel-download-url';
 
   // ==========================================
   // 6. Portfolio & Showreels Media
@@ -56,6 +68,7 @@ class ApiEndpoints {
   static const String portfolioCollection = '$apiPrefix/portfolio/';
   static const String myPortfolio = '$apiPrefix/portfolio/my';
   static String portfolioItem(String mediaId) => '$apiPrefix/portfolio/$mediaId';
+  static String portfolioDownloadUrl(String mediaId) => '$apiPrefix/portfolio/$mediaId/download-url';
 
   // ==========================================
   // 7. Social Posts (LinkedIn for Cinema Feed)
@@ -63,6 +76,24 @@ class ApiEndpoints {
   static const String postsCollection = '$apiPrefix/posts/';
   static String postDetails(String postId) => '$apiPrefix/posts/$postId';
   static const String myPosts = '$apiPrefix/posts/my';
+  static String postBookmark(String postId) => '$apiPrefix/posts/$postId/bookmark';
+  static const String myBookmarks = '$apiPrefix/posts/bookmarks/my';
+
+  // ==========================================
+  // 7b. CineReels (Showreels Feed)
+  // ==========================================
+  static const String reelsCollection = '$apiPrefix/reels/';
+  static const String myReels = '$apiPrefix/reels/my';
+  static String reelDetails(String reelId) => '$apiPrefix/reels/$reelId';
+  static String reelPlaybackUrl(String reelId) => '$apiPrefix/reels/$reelId/playback-url';
+
+  // ==========================================
+  // 7c. On-Set Stories (24h Ephemeral Feed)
+  // ==========================================
+  static const String storiesCollection = '$apiPrefix/stories/';
+  static const String myStories = '$apiPrefix/stories/my';
+  static String storyDetails(String storyId) => '$apiPrefix/stories/$storyId';
+  static String storyPlaybackUrl(String storyId) => '$apiPrefix/stories/$storyId/playback-url';
 
   // ==========================================
   // 8. Interactions (Likes, Claps, Timecode Critiques)
@@ -86,10 +117,12 @@ class ApiEndpoints {
   // ==========================================
   // 10. Talent Collaborations & Invitations
   // ==========================================
+  static const String collaborationsCollection = '$apiPrefix/collaborations/';
   static const String myCollaborations = '$apiPrefix/collaborations/my';
   static String collaborationDetails(String collabId) => '$apiPrefix/collaborations/$collabId';
   static String acceptCollaboration(String collabId) => '$apiPrefix/collaborations/$collabId/accept';
   static String rejectCollaboration(String collabId) => '$apiPrefix/collaborations/$collabId/reject';
+  static String updateCollaborationStatus(String collabId) => '$apiPrefix/collaborations/$collabId/status';
 
   // ==========================================
   // 11. Messaging & Real-Time Chat
@@ -100,7 +133,8 @@ class ApiEndpoints {
   static String messageDetails(String msgId) => '$apiPrefix/messages/$msgId';
   static const String unreadMessageCount = '$apiPrefix/messages/unread-count';
   static String webSocketChat(String token) {
-    final wsBase = baseUrl.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://');
+    final cleanBase = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final wsBase = cleanBase.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://');
     return '$wsBase/ws/chat?token=$token';
   }
 
@@ -123,4 +157,12 @@ class ApiEndpoints {
   // (Exclusive to Talent User Portal)
   // ==========================================
   static const String talentDashboard = '$apiPrefix/dashboard/talent';
+
+  // ==========================================
+  // 15. Production House Endpoints
+  // ==========================================
+  static const String productionHouseDashboard = '$apiPrefix/dashboard/production-house';
+  static const String productionHouseMe = '$apiPrefix/production-houses/me';
+  static const String productionHousesCollection = '$apiPrefix/production-houses';
+  static String productionHouseDetails(String id) => '$apiPrefix/production-houses/$id';
 }

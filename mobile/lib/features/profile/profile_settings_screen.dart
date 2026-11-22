@@ -27,7 +27,31 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final talent = widget.appState.talentNetwork.first;
+    final talent = widget.appState.myProfile;
+    if (talent == null) {
+      return Scaffold(
+        backgroundColor: CineColors.background,
+        appBar: AppBar(
+          backgroundColor: CineColors.background,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: CineColors.textPrimary),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: const Text(
+            'Settings and privacy',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: CineColors.textPrimary,
+            ),
+          ),
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(color: CineColors.gold),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: CineColors.background,
@@ -59,7 +83,12 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
           _accountHeader(talent),
           const Divider(height: 1, color: CineColors.border),
           _sectionLabel('Your account'),
-          _tile(Icons.person_outline_rounded, 'Personal details', 'Name, username, email'),
+          _tile(
+            Icons.person_outline_rounded,
+            'Personal details',
+            'Name, headline, rate & availability',
+            onTap: () => _openEditDetailsDialog(context, talent),
+          ),
           _tile(Icons.lock_outline_rounded, 'Password and security', 'Password, login activity'),
           _tile(Icons.verified_user_outlined, 'Guild verification', '${talent.guildId} • Verified'),
           _sectionLabel('How you use CineConnect'),
@@ -272,6 +301,119 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     );
   }
 
+  void _openEditDetailsDialog(BuildContext context, dynamic talent) {
+    final nameCtrl = TextEditingController(text: talent.fullName);
+    final handleCtrl = TextEditingController(text: talent.handle);
+    final craftCtrl = TextEditingController(text: talent.primaryCraft);
+    final headlineCtrl = TextEditingController(text: talent.headline);
+    final guildCtrl = TextEditingController(text: talent.guildId);
+    final locationCtrl = TextEditingController(text: talent.hubLocation);
+    final rateCtrl = TextEditingController(text: talent.dailyCallSheetRate);
+    final availCtrl = TextEditingController(text: talent.immediateAvailability);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF13141C),
+        title: const Text(
+          'Edit Slate Details',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: CineColors.gold),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                style: const TextStyle(color: CineColors.textPrimary),
+                decoration: const InputDecoration(labelText: 'Full Name', labelStyle: TextStyle(color: CineColors.textMuted)),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: handleCtrl,
+                style: const TextStyle(color: CineColors.textPrimary),
+                decoration: const InputDecoration(labelText: 'Handle (@username)', labelStyle: TextStyle(color: CineColors.textMuted)),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: craftCtrl,
+                style: const TextStyle(color: CineColors.textPrimary),
+                decoration: const InputDecoration(labelText: 'Primary Craft', labelStyle: TextStyle(color: CineColors.textMuted)),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: headlineCtrl,
+                style: const TextStyle(color: CineColors.textPrimary),
+                decoration: const InputDecoration(labelText: 'Headline', labelStyle: TextStyle(color: CineColors.textMuted)),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: guildCtrl,
+                style: const TextStyle(color: CineColors.textPrimary),
+                decoration: const InputDecoration(labelText: 'Guild ID (e.g. ISC-9021)', labelStyle: TextStyle(color: CineColors.textMuted)),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: locationCtrl,
+                style: const TextStyle(color: CineColors.textPrimary),
+                decoration: const InputDecoration(labelText: 'Location / Hub', labelStyle: TextStyle(color: CineColors.textMuted)),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: rateCtrl,
+                style: const TextStyle(color: CineColors.textPrimary),
+                decoration: const InputDecoration(labelText: 'Call-Sheet Rate', labelStyle: TextStyle(color: CineColors.textMuted)),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: availCtrl,
+                style: const TextStyle(color: CineColors.textPrimary),
+                decoration: const InputDecoration(labelText: 'Availability', labelStyle: TextStyle(color: CineColors.textMuted)),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: CineColors.textMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: CineColors.gold, foregroundColor: Colors.black),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                await widget.appState.updateMyProfile({
+                  'full_name': nameCtrl.text.trim(),
+                  'handle': handleCtrl.text.trim(),
+                  'role': craftCtrl.text.trim(),
+                  'headline': headlineCtrl.text.trim(),
+                  'guild_id': guildCtrl.text.trim(),
+                  'location': locationCtrl.text.trim(),
+                  'daily_call_sheet_rate': rateCtrl.text.trim(),
+                  'immediate_availability': availCtrl.text.trim(),
+                });
+                if (context.mounted) {
+                  setState(() {});
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Profile updated successfully!')),
+                  );
+                }
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Could not update profile')),
+                  );
+                }
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _confirmLogout(BuildContext context) {
     showDialog(
       context: context,
@@ -294,6 +436,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
             onPressed: () async {
               Navigator.of(ctx).pop();
               try {
+                widget.appState.clearUserData();
                 if (widget.onSignOut != null) {
                   await widget.onSignOut!();
                 } else {

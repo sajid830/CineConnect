@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.core.config import settings
 from app.api.dependencies import get_current_user, require_talent
 from app.models.user import User
 from app.models.portfolio import PortfolioMedia
@@ -17,9 +18,37 @@ from app.services.storage import (
     acquire_public_media_advisory_locks,
     validate_public_media_ownership,
     cleanup_unreferenced_public_media,
+    parse_storage_url,
+    generate_presigned_download_url,
 )
 
 router = APIRouter()
+
+
+def format_portfolio_response(media: PortfolioMedia) -> PortfolioMediaResponse:
+    file_key, bucket, is_internal = parse_storage_url(media.media_url)
+    playback_url = media.media_url
+    if is_internal and file_key:
+        try:
+            target_bucket = bucket or settings.MINIO_PUBLIC_BUCKET
+            playback_url = generate_presigned_download_url(
+                bucket_name=target_bucket,
+                file_key=file_key,
+                expires_in=86400,
+            )
+        except Exception:
+            playback_url = media.media_url
+    return PortfolioMediaResponse(
+        id=media.id,
+        user_id=media.user_id,
+        title=media.title,
+        description=media.description,
+        media_type=media.media_type,
+        media_url=media.media_url,
+        thumbnail_url=media.thumbnail_url,
+        playback_url=playback_url,
+        created_at=media.created_at,
+    )
 
 
 @router.post("/", response_model=PortfolioMediaResponse, status_code=status.HTTP_201_CREATED)
@@ -60,7 +89,7 @@ async def create_portfolio_item(
     db.add(media)
     await db.commit()
     await db.refresh(media)
-    return media
+    return format_portfolio_response(media)
 
 
 @router.get("/my", response_model=List[PortfolioMediaResponse])
@@ -71,7 +100,33 @@ async def list_my_portfolio(
     """List portfolio items of the logged-in talent."""
     stmt = select(PortfolioMedia).where(PortfolioMedia.user_id == current_user.id).order_by(PortfolioMedia.created_at.desc())
     result = await db.execute(stmt)
-    return result.scalars().all()
+    return [format_portfolio_response(m) for m in result.scalars().all()]
+
+
+@router.get("/{media_id}/download-url")
+async def get_portfolio_download_url(
+    media_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Obtain an authorized playable/downloadable URL for a portfolio asset."""
+    result = await db.execute(select(PortfolioMedia).where(PortfolioMedia.id == media_id))
+    media = result.scalar_one_or_none()
+    if not media:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio media item not found")
+
+    file_key, bucket, is_internal = parse_storage_url(media.media_url)
+    playback_url = media.media_url
+    if is_internal and file_key:
+        try:
+            target_bucket = bucket or settings.MINIO_PUBLIC_BUCKET
+            playback_url = generate_presigned_download_url(
+                bucket_name=target_bucket,
+                file_key=file_key,
+                expires_in=86400,
+            )
+        except Exception:
+            playback_url = media.media_url
+    return {"media_id": str(media.id), "playback_url": playback_url, "media_url": media.media_url}
 
 
 @router.get("/{media_id}", response_model=PortfolioMediaResponse)
@@ -84,7 +139,7 @@ async def get_portfolio_item(
     media = result.scalar_one_or_none()
     if not media:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio media item not found")
-    return media
+    return format_portfolio_response(media)
 
 
 @router.put("/{media_id}", response_model=PortfolioMediaResponse)
@@ -147,7 +202,7 @@ async def update_portfolio_item(
     if urls_to_cleanup:
         await cleanup_unreferenced_public_media(db=db, urls_to_check=urls_to_cleanup)
 
-    return media
+    return format_portfolio_response(media)
 
 
 @router.delete("/{media_id}", status_code=status.HTTP_204_NO_CONTENT)

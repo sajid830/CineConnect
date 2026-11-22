@@ -16,6 +16,8 @@ from app.api.v1.endpoints import (
     notifications,
     media,
     dashboard,
+    reels,
+    stories,
 )
 
 api_router = APIRouter()
@@ -36,3 +38,5 @@ api_router.include_router(search.router, prefix="/search", tags=["Global Search"
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(media.router, prefix="/media", tags=["Media Storage"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboards"])
+api_router.include_router(reels.router, prefix="/reels", tags=["CineReels Showreels"])
+api_router.include_router(stories.router, prefix="/stories", tags=["On-Set Stories"])

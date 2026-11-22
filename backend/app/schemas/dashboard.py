@@ -21,4 +21,8 @@ class ProductionHouseDashboardResponse(BaseModel):
     total_applications_received: int
     pending_reviews: int
     total_collaborations: int
+    open_casting_calls: Optional[int] = None
+    new_applications: Optional[int] = None
+    shortlisted: int = 0
     recent_opportunities: List[Dict[str, Any]] = []
+    recent_applications: List[Dict[str, Any]] = []

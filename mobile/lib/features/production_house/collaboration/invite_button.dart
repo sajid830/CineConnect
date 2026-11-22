@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cineconnect/app/theme.dart';
+import 'package:cineconnect/core/network/api_client.dart';
 import 'package:cineconnect/features/production_house/data/models/project.dart';
 import 'package:cineconnect/features/production_house/data/models/talent.dart';
 import 'package:cineconnect/features/production_house/data/repositories/collaboration_repository.dart';
@@ -55,7 +56,13 @@ class _InviteButtonState extends ConsumerState<InviteButton> {
     } on AlreadyInvitedException {
       if (mounted) _say('${widget.talent.fullName} is already on that project');
     } catch (e) {
-      if (mounted) _say('Could not send the invitation');
+      if (mounted) {
+        if (e is ApiException && e.message.isNotEmpty) {
+          _say(e.message);
+        } else {
+          _say('Could not send the invitation');
+        }
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

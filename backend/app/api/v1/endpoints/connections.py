@@ -1,5 +1,5 @@
 import uuid
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,22 +62,20 @@ async def send_connection_request(
 async def list_my_connections(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
+    status: Optional[str] = Query("accepted", description="Filter by status ('accepted', 'pending', 'all')"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all accepted connections of the logged-in user."""
+    """List all connections of the logged-in user."""
     stmt = (
         select(Connection)
         .where(
-            and_(
-                Connection.status == "accepted",
-                or_(Connection.sender_id == current_user.id, Connection.receiver_id == current_user.id),
-            )
+            or_(Connection.sender_id == current_user.id, Connection.receiver_id == current_user.id),
         )
-        .order_by(Connection.updated_at.desc())
-        .offset(skip)
-        .limit(limit)
     )
+    if status and status != "all":
+        stmt = stmt.where(Connection.status == status)
+    stmt = stmt.order_by(Connection.updated_at.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
 

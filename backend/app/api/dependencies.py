@@ -17,6 +17,12 @@ security_scheme = HTTPBearer(
     auto_error=True,
 )
 
+optional_security_scheme = HTTPBearer(
+    scheme_name="SupabaseOptionalBearerAuth",
+    description="Optionally pass Supabase Auth JWT Access Token: Bearer <token>",
+    auto_error=False,
+)
+
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
@@ -172,6 +178,24 @@ async def get_current_user(
 
         # If neither condition explains the error, re-raise the original exception
         raise exc
+
+
+async def get_optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    """Resolves authenticated user if valid Bearer token credentials are provided.
+
+    Returns None if no authorization credentials are provided or if token verification fails.
+    """
+    if not credentials:
+        return None
+    try:
+        return await get_current_user(credentials=credentials, db=db)
+    except HTTPException:
+        return None
+    except Exception:
+        return None
 
 
 async def require_talent(

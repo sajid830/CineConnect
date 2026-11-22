@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, List
 from sqlalchemy import String, Text, DateTime, ForeignKey, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 from app.db.base import Base
 
@@ -19,6 +19,10 @@ class Post(Base):
     )
     caption: Mapped[str] = mapped_column(Text, nullable=False)
     media_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    video_slate_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    smpte_timecode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    aspect_ratio: Mapped[Optional[str]] = mapped_column(String(20), default="2.39:1", nullable=True)
+    tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String(100)), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -31,9 +35,12 @@ class Post(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="posts")
+    user: Mapped["User"] = relationship("User", back_populates="posts", lazy="selectin")
     interactions: Mapped[List["Interaction"]] = relationship(
         "Interaction", back_populates="post", cascade="all, delete-orphan"
+    )
+    bookmarks: Mapped[List["Bookmark"]] = relationship(
+        "Bookmark", back_populates="post", cascade="all, delete-orphan"
     )
 
 
@@ -54,6 +61,7 @@ class Interaction(Base):
         String(50), default="like", nullable=False
     )  # 'like', 'comment'
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    timecode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -61,7 +69,86 @@ class Interaction(Base):
 
     # Relationships
     post: Mapped["Post"] = relationship("Post", back_populates="interactions")
-    user: Mapped["User"] = relationship("User")
+    user: Mapped["User"] = relationship("User", lazy="selectin")
+
+
+class Bookmark(Base):
+    """Saved / bookmarked post by a user."""
+    __tablename__ = "bookmarks"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "post_id", name="uq_bookmark_user_post"),
+    )
+
+    post: Mapped["Post"] = relationship("Post", back_populates="bookmarks", lazy="selectin")
+    user: Mapped["User"] = relationship("User", lazy="selectin")
+
+
+class Reel(Base):
+    """CineReel short-form cinematic vertical showcase."""
+    __tablename__ = "reels"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    caption: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    media_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    audio_track: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    smpte_timecode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    craft_specialty: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    reel_type: Mapped[Optional[str]] = mapped_column(String(100), default="Cinematography Showreel", nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    user: Mapped["User"] = relationship("User", lazy="selectin")
+
+
+class Story(Base):
+    """On-Set Story expiring after 24 hours."""
+    __tablename__ = "stories"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    media_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    caption: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    craft_badge: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    user: Mapped["User"] = relationship("User", lazy="selectin")
 
 
 class Connection(Base):
@@ -100,8 +187,8 @@ class Connection(Base):
     )
 
     # Relationships
-    follower: Mapped["User"] = relationship("User", foreign_keys=[follower_id], back_populates="following_connections")
-    following: Mapped["User"] = relationship("User", foreign_keys=[following_id], back_populates="follower_connections")
+    follower: Mapped["User"] = relationship("User", foreign_keys=[follower_id], back_populates="following_connections", lazy="selectin")
+    following: Mapped["User"] = relationship("User", foreign_keys=[following_id], back_populates="follower_connections", lazy="selectin")
     sender = synonym("follower")
     receiver = synonym("following")
 

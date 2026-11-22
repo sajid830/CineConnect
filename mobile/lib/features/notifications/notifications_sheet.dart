@@ -15,48 +15,77 @@ class NotificationsSheet extends StatefulWidget {
 class _NotificationsSheetState extends State<NotificationsSheet> {
   String _filter = 'All';
 
+  @override
+  void initState() {
+    super.initState();
+    // Refresh notifications from FastAPI when the sheet opens
+    widget.appState.loadNotifications(forceRefresh: true);
+  }
+
   IconData _iconForType(String type) {
-    switch (type) {
+    switch (type.toLowerCase()) {
       case 'shortlist':
         return Icons.star_rounded;
-      case 'castingMatch':
+      case 'castingmatch':
+      case 'application':
         return Icons.auto_awesome_rounded;
-      case 'auditionStatus':
+      case 'auditionstatus':
         return Icons.movie_filter_rounded;
       case 'hold':
         return Icons.calendar_today_rounded;
       case 'endorsement':
+      case 'connection':
         return Icons.verified_rounded;
+      case 'collaboration':
+        return Icons.group_outlined;
+      case 'message':
+        return Icons.chat_bubble_outline;
       default:
         return Icons.notifications_rounded;
     }
   }
 
   Color _colorForType(String type) {
-    switch (type) {
+    switch (type.toLowerCase()) {
       case 'shortlist':
         return CineColors.gold;
-      case 'castingMatch':
+      case 'castingmatch':
+      case 'application':
         return CineColors.goldLight;
-      case 'auditionStatus':
+      case 'auditionstatus':
         return const Color(0xFF60A5FA);
       case 'hold':
         return const Color(0xFF34D399);
       case 'endorsement':
+      case 'connection':
         return const Color(0xFFA78BFA);
+      case 'collaboration':
+        return const Color(0xFFF59E0B);
+      case 'message':
+        return const Color(0xFF38BDF8);
       default:
         return CineColors.gold;
     }
   }
 
   bool _matchesFilter(CineNotification notif) {
+    final t = notif.type.toLowerCase();
     switch (_filter) {
       case 'Casting':
-        return notif.type == 'castingMatch' || notif.type == 'auditionStatus';
+        return t == 'castingmatch' ||
+            t == 'auditionstatus' ||
+            t == 'application' ||
+            t.contains('casting') ||
+            t.contains('audition');
       case 'Activity':
-        return notif.type == 'shortlist' ||
-            notif.type == 'hold' ||
-            notif.type == 'endorsement';
+        return t == 'shortlist' ||
+            t == 'hold' ||
+            t == 'endorsement' ||
+            t == 'connection' ||
+            t == 'collaboration' ||
+            t == 'message' ||
+            t.contains('collab') ||
+            t.contains('message');
       default:
         return true;
     }
@@ -64,7 +93,8 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = widget.appState.notifications.where(_matchesFilter).toList();
+    final state = widget.appState;
+    final filtered = state.notifications.where(_matchesFilter).toList();
     final unread = filtered.where((n) => !n.isRead).toList();
     final earlier = filtered.where((n) => n.isRead).toList();
 
@@ -108,7 +138,7 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
                     letterSpacing: -0.3,
                   ),
                 ),
-                if (widget.appState.unreadNotificationsCount > 0) ...[
+                if (state.unreadNotificationsCount > 0) ...[
                   const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -117,7 +147,7 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
-                      '${widget.appState.unreadNotificationsCount}',
+                      '${state.unreadNotificationsCount}',
                       style: const TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
@@ -127,9 +157,19 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
                   ),
                 ],
                 const Spacer(),
-                if (widget.appState.unreadNotificationsCount > 0)
+                if (state.unreadNotificationsCount > 0)
                   TextButton(
-                    onPressed: widget.appState.markNotificationsAsRead,
+                    onPressed: () async {
+                      try {
+                        await state.markNotificationsAsRead();
+                      } catch (_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Could not mark all notifications as read')),
+                          );
+                        }
+                      }
+                    },
                     child: const Text(
                       'Mark all read',
                       style: TextStyle(
@@ -181,37 +221,82 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
           const SizedBox(height: 6),
           const Divider(height: 1, color: CineColors.border),
           Expanded(
-            child: filtered.isEmpty
+            child: state.isLoadingNotifications && state.notifications.isEmpty
                 ? const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.notifications_none_rounded,
-                          size: 46,
-                          color: CineColors.textMuted,
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          'No notifications yet',
-                          style: TextStyle(color: CineColors.textMuted),
-                        ),
-                      ],
-                    ),
+                    child: CircularProgressIndicator(color: CineColors.gold),
                   )
-                : ListView(
-                    padding: const EdgeInsets.only(bottom: 24),
-                    children: [
-                      if (unread.isNotEmpty) ...[
-                        _sectionLabel('New'),
-                        ...unread.map((n) => _notificationTile(n)),
-                      ],
-                      if (earlier.isNotEmpty) ...[
-                        _sectionLabel('Earlier'),
-                        ...earlier.map((n) => _notificationTile(n)),
-                      ],
-                    ],
-                  ),
+                : state.notificationsError != null && state.notifications.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.error_outline_rounded,
+                              size: 44,
+                              color: CineColors.textMuted,
+                            ),
+                            const SizedBox(height: 10),
+                            const Text(
+                              'Could not load notifications',
+                              style: TextStyle(color: CineColors.textMuted),
+                            ),
+                            const SizedBox(height: 12),
+                            OutlinedButton(
+                              onPressed: () => state.loadNotifications(forceRefresh: true),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: CineColors.gold),
+                              ),
+                              child: const Text(
+                                'Try again',
+                                style: TextStyle(color: CineColors.gold),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : RefreshIndicator(
+                        color: CineColors.gold,
+                        backgroundColor: CineColors.surfaceElevated,
+                        onRefresh: () => state.loadNotifications(forceRefresh: true),
+                        child: filtered.isEmpty
+                            ? ListView(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                children: const [
+                                  SizedBox(height: 120),
+                                  Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.notifications_none_rounded,
+                                          size: 46,
+                                          color: CineColors.textMuted,
+                                        ),
+                                        SizedBox(height: 10),
+                                        Text(
+                                          'No notifications yet',
+                                          style: TextStyle(color: CineColors.textMuted),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : ListView(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.only(bottom: 24),
+                                children: [
+                                  if (unread.isNotEmpty) ...[
+                                    _sectionLabel('New'),
+                                    ...unread.map((n) => _notificationTile(n)),
+                                  ],
+                                  if (earlier.isNotEmpty) ...[
+                                    _sectionLabel('Earlier'),
+                                    ...earlier.map((n) => _notificationTile(n)),
+                                  ],
+                                ],
+                              ),
+                      ),
           ),
         ],
       ),
@@ -236,7 +321,19 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
     final color = _colorForType(notif.type);
 
     return InkWell(
-      onTap: () => widget.appState.markNotificationAsRead(notif.id),
+      onTap: () async {
+        if (!notif.isRead) {
+          try {
+            await widget.appState.markNotificationAsRead(notif.id);
+          } catch (_) {
+            if (mounted && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Could not mark notification as read')),
+              );
+            }
+          }
+        }
+      },
       child: Container(
         color: notif.isRead ? Colors.transparent : CineColors.gold.withValues(alpha: 0.04),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),

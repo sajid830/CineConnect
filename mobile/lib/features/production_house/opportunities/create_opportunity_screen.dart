@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cineconnect/core/network/api_client.dart';
 import 'package:cineconnect/core/utils/formatters.dart';
 import 'package:cineconnect/features/production_house/data/models/opportunity.dart';
 import 'package:cineconnect/features/production_house/data/models/project.dart';
@@ -96,11 +97,12 @@ class _CreateOpportunityScreenState
       if (mounted) context.pop();
     } catch (e) {
       if (mounted) {
+        final message = e is ApiException
+            ? e.message
+            : (_isEdit ? 'Could not save changes' : 'Could not create casting call');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              _isEdit ? 'Could not save changes' : 'Could not create casting call',
-            ),
+            content: Text(message),
           ),
         );
       }
@@ -139,6 +141,9 @@ class _CreateOpportunityScreenState
               icon: Icons.movie_creation_outlined,
             );
           }
+          final selectedProjectValid = projects.any((p) => p.id == _projectId);
+          final initialProject = selectedProjectValid ? _projectId : null;
+
           return SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
@@ -148,7 +153,7 @@ class _CreateOpportunityScreenState
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     DropdownButtonFormField<String>(
-                      initialValue: _projectId,
+                      initialValue: initialProject,
                       decoration: const InputDecoration(labelText: 'Project'),
                       items: [
                         for (final p in projects)

@@ -32,6 +32,14 @@ from app.schemas.notification import NotificationResponse, NotificationUnreadCou
 from app.schemas.media import MediaUploadUrlRequest, MediaUploadUrlResponse
 from app.schemas.dashboard import TalentDashboardResponse, ProductionHouseDashboardResponse
 from app.schemas.search import GlobalSearchResponse
+from app.schemas.reel import ReelCreate, ReelResponse
+from app.schemas.story import StoryCreate, StoryResponse
+from app.schemas.bookmark import BookmarkResponse
+from app.schemas.film_credit import (
+    FilmCreditCreate,
+    FilmCreditUpdate,
+    FilmCreditResponse,
+)
 
 __all__ = [
     "HealthResponse",
@@ -85,4 +93,12 @@ __all__ = [
     "TalentDashboardResponse",
     "ProductionHouseDashboardResponse",
     "GlobalSearchResponse",
+    "ReelCreate",
+    "ReelResponse",
+    "StoryCreate",
+    "StoryResponse",
+    "BookmarkResponse",
+    "FilmCreditCreate",
+    "FilmCreditUpdate",
+    "FilmCreditResponse",
 ]

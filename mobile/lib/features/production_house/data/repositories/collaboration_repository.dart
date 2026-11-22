@@ -1,17 +1,116 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_endpoints.dart';
 import '../models/collaboration.dart';
 import 'talent_repository.dart';
 
 class AlreadyInvitedException implements Exception {
-  const AlreadyInvitedException();
+  final String message;
+  const AlreadyInvitedException([this.message = 'Talent is already invited or part of this project.']);
+
+  @override
+  String toString() => message;
 }
 
 abstract class CollaborationRepository {
   Future<List<Collaboration>> getCollaborations();
 
-  Future<void> invite({required String projectId, required String talentId});
+  Future<void> invite({
+    required String projectId,
+    required String talentId,
+    String? role,
+  });
 
   Future<void> remove(String id);
+
+  Future<void> updateStatus({
+    required String id,
+    required String status,
+  });
+
+  Future<void> accept(String id);
+
+  Future<void> reject(String id);
+}
+
+class RemoteCollaborationRepository implements CollaborationRepository {
+  final ApiClient _client;
+
+  RemoteCollaborationRepository({ApiClient? client})
+      : _client = client ?? ApiClient();
+
+  @override
+  Future<List<Collaboration>> getCollaborations() async {
+    final res = await _client.get(
+      ApiEndpoints.myCollaborations,
+      queryParams: {'limit': 100},
+    );
+
+    if (res is List) {
+      final Map<String, Collaboration> deduplicated = {};
+      for (final item in res.whereType<Map<String, dynamic>>()) {
+        try {
+          final collab = Collaboration.fromJson(item);
+          if (collab.id.isNotEmpty) {
+            deduplicated[collab.id] = collab;
+          }
+        } catch (_) {
+          // Gracefully skip malformed entry
+        }
+      }
+      final list = deduplicated.values.toList();
+      list.sort((a, b) => b.invitedAt.compareTo(a.invitedAt));
+      return list;
+    }
+    return [];
+  }
+
+  @override
+  Future<void> invite({
+    required String projectId,
+    required String talentId,
+    String? role,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'project_id': projectId,
+        'talent_id': talentId,
+        if (role != null && role.isNotEmpty) 'role': role,
+      };
+      await _client.post(ApiEndpoints.collaborationsCollection, body: body);
+    } on ApiException catch (e) {
+      if (e.statusCode == 409) {
+        throw const AlreadyInvitedException();
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> remove(String id) async {
+    await _client.delete(ApiEndpoints.collaborationDetails(id));
+  }
+
+  @override
+  Future<void> updateStatus({
+    required String id,
+    required String status,
+  }) async {
+    await _client.patch(
+      ApiEndpoints.updateCollaborationStatus(id),
+      body: {'status': status},
+    );
+  }
+
+  @override
+  Future<void> accept(String id) async {
+    await _client.patch(ApiEndpoints.acceptCollaboration(id));
+  }
+
+  @override
+  Future<void> reject(String id) async {
+    await _client.patch(ApiEndpoints.rejectCollaboration(id));
+  }
 }
 
 class _CollabRecord {
@@ -89,6 +188,7 @@ class MockCollaborationRepository implements CollaborationRepository {
   Future<void> invite({
     required String projectId,
     required String talentId,
+    String? role,
   }) async {
     await Future.delayed(const Duration(milliseconds: 700));
     final exists = _records.any(
@@ -111,8 +211,38 @@ class MockCollaborationRepository implements CollaborationRepository {
     await Future.delayed(const Duration(milliseconds: 500));
     _records.removeWhere((r) => r.id == id);
   }
+
+  @override
+  Future<void> updateStatus({
+    required String id,
+    required String status,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final index = _records.indexWhere((r) => r.id == id);
+    if (index != -1) {
+      final old = _records[index];
+      _records[index] = _CollabRecord(
+        id: old.id,
+        projectId: old.projectId,
+        talentId: old.talentId,
+        status: CollaborationStatus.fromApi(status),
+        invitedAt: old.invitedAt,
+      );
+    }
+  }
+
+  @override
+  Future<void> accept(String id) async {
+    await updateStatus(id: id, status: 'accepted');
+  }
+
+  @override
+  Future<void> reject(String id) async {
+    await updateStatus(id: id, status: 'declined');
+  }
 }
 
 final collaborationRepositoryProvider = Provider<CollaborationRepository>((ref) {
-  return MockCollaborationRepository(ref.watch(talentRepositoryProvider));
+  return RemoteCollaborationRepository();
 });
+

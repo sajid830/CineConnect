@@ -37,14 +37,21 @@ class NotificationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(notificationsProvider);
-    final unread = ref.watch(unreadCountProvider);
+    final unreadState = ref.watch(unreadCountProvider);
+    final unread = unreadState.count;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
+          if (unreadState.hasError && unread == null)
+            IconButton(
+              icon: const Icon(Icons.refresh, size: 20),
+              tooltip: 'Retry loading unread count',
+              onPressed: () => ref.read(unreadCountProvider.notifier).retry(),
+            ),
           TextButton(
-            onPressed: unread == 0 ? null : () => _markAll(context, ref),
+            onPressed: (unread == null || unread == 0) ? null : () => _markAll(context, ref),
             child: const Text('Mark all read'),
           ),
         ],
@@ -57,7 +64,10 @@ class NotificationsScreen extends ConsumerWidget {
             children: [
               const Text('Could not load notifications'),
               TextButton(
-                onPressed: () => ref.invalidate(notificationsProvider),
+                onPressed: () {
+                  ref.invalidate(notificationsProvider);
+                  ref.read(unreadCountProvider.notifier).refresh();
+                },
                 child: const Text('Try again'),
               ),
             ],
@@ -66,6 +76,7 @@ class NotificationsScreen extends ConsumerWidget {
         data: (items) => RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(notificationsProvider);
+            ref.read(unreadCountProvider.notifier).refresh();
             await ref.read(notificationsProvider.future);
           },
           child: items.isEmpty

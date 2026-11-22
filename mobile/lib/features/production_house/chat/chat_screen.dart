@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cineconnect/app/theme.dart';
+import 'package:cineconnect/core/services/chat_service.dart';
 import 'package:cineconnect/features/production_house/data/models/chat_message.dart';
 import 'package:cineconnect/features/production_house/data/repositories/chat_repository.dart';
 import 'package:cineconnect/features/production_house/collaboration/collaborations_provider.dart';
@@ -22,20 +23,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _error = false;
   bool _sending = false;
   StreamSubscription<ChatMessage>? _subscription;
+  StreamSubscription<ChatConnectionState>? _connSubscription;
 
   @override
   void initState() {
     super.initState();
     final repo = ref.read(chatRepositoryProvider);
     _subscription = repo.incoming(widget.collaborationId).listen((message) {
-      if (mounted) setState(() => _messages = [..._messages, message]);
+      if (mounted) {
+        setState(() {
+          if (!_messages.any((m) => m.id == message.id)) {
+            _messages = [..._messages, message];
+          }
+        });
+      }
     });
+
+    final chatService = ref.read(chatServiceProvider);
+    _connSubscription = chatService.connectionStateStream.listen((state) {
+      if (state == ChatConnectionState.connected && _messages.isNotEmpty) {
+        // Reconnected: recover any messages potentially missed while disconnected
+        _refreshQuietly();
+      }
+    });
+
     _load();
   }
 
   @override
   void dispose() {
     _subscription?.cancel();
+    _connSubscription?.cancel();
     _inputController.dispose();
     super.dispose();
   }
@@ -56,6 +74,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  Future<void> _refreshQuietly() async {
+    try {
+      final list =
+          await ref.read(chatRepositoryProvider).getMessages(widget.collaborationId);
+      if (mounted) setState(() => _messages = list);
+    } catch (_) {}
+  }
+
   Future<void> _send() async {
     final text = _inputController.text.trim();
     if (text.isEmpty || _sending) return;
@@ -64,7 +90,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       final sent =
           await ref.read(chatRepositoryProvider).send(widget.collaborationId, text);
-      if (mounted) setState(() => _messages = [..._messages, sent]);
+      if (mounted) {
+        setState(() {
+          if (!_messages.any((m) => m.id == sent.id)) {
+            _messages = [..._messages, sent];
+          }
+        });
+      }
     } catch (e) {
       if (mounted) {
         _inputController.text = text;

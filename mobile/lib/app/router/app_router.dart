@@ -20,6 +20,7 @@ import '../../features/production_house/company_profile/edit_company_profile_scr
 import '../../features/production_house/chat/chat_screen.dart';
 import '../../features/production_house/notifications/notifications_screen.dart';
 import '../../features/diagnostics/presentation/diagnostic_home_screen.dart';
+import '../../features/search/global_search_screen.dart';
 
 /// Central CineConnect GoRouter configuration connecting:
 /// 1. Shared Onboarding & Role Selection (/)
@@ -66,7 +67,8 @@ final GoRouter appRouter = GoRouter(
         location.startsWith('/applications') ||
         location.startsWith('/talent-profile') ||
         location.startsWith('/company-profile') ||
-        location.startsWith('/ph-');
+        location.startsWith('/ph-') ||
+        location.startsWith('/chat');
 
     if (isTalentRoute && role != AuthRole.talent) {
       // Production House attempting to access Talent route
@@ -215,6 +217,13 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(
+      path: '/chat/:id',
+      redirect: (context, state) {
+        final id = state.pathParameters['id'] ?? 'general';
+        return '/ph-chat?collaborationId=$id';
+      },
+    ),
+    GoRoute(
       path: '/ph-notifications',
       name: 'ph_notifications',
       builder: (context, state) => const NotificationsScreen(),
@@ -225,6 +234,13 @@ final GoRouter appRouter = GoRouter(
       path: '/diagnostics',
       name: 'diagnostics',
       builder: (context, state) => const DiagnosticHomeScreen(),
+    ),
+
+    // --- Global Search ---
+    GoRoute(
+      path: '/search',
+      name: 'global_search',
+      builder: (context, state) => const GlobalSearchScreen(),
     ),
   ],
 );

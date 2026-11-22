@@ -20,7 +20,14 @@ class _ChatSheetState extends State<ChatSheet> {
   final ScrollController _scrollController = ScrollController();
 
   @override
+  void initState() {
+    super.initState();
+    widget.appState.initChatService();
+  }
+
+  @override
   void dispose() {
+    widget.appState.clearActiveThread();
     _messageController.dispose();
     _searchController.dispose();
     _scrollController.dispose();
@@ -48,6 +55,7 @@ class _ChatSheetState extends State<ChatSheet> {
   }
 
   void _openThread(CineChatThread thread) {
+    widget.appState.loadThreadMessages(thread.id);
     widget.appState.markChatThreadAsRead(thread.id);
     setState(() => _selectedThreadId = thread.id);
     _scrollToBottom();
@@ -105,7 +113,10 @@ class _ChatSheetState extends State<ChatSheet> {
           children: [
             IconButton(
               icon: const Icon(Icons.arrow_back_rounded, color: CineColors.textPrimary),
-              onPressed: () => setState(() => _selectedThreadId = null),
+              onPressed: () {
+                widget.appState.clearActiveThread();
+                setState(() => _selectedThreadId = null);
+              },
             ),
             Stack(
               children: [

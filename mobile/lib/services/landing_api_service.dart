@@ -15,7 +15,7 @@ class LandingApiService {
 
   LandingApiService({Dio? dio, String? baseUrl})
       : _dio = dio ?? Dio(),
-        _baseUrl = baseUrl ?? EnvConfig.fromEnvironment().apiBaseUrl;
+        _baseUrl = (baseUrl ?? EnvConfig.fromEnvironment().apiBaseUrl).trim().replaceAll(RegExp(r'/+$'), '');
 
   /// Root health check: GET /health
   /// Verifies backend availability without requiring authentication.

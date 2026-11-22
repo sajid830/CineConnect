@@ -15,6 +15,8 @@ class ApplicationStatusBadge extends StatelessWidget {
         return AppColors.goldLight;
       case ApplicationStatus.shortlisted:
         return AppColors.gold;
+      case ApplicationStatus.accepted:
+        return AppColors.success;
       case ApplicationStatus.rejected:
         return AppColors.error;
     }

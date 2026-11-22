@@ -1243,7 +1243,7 @@ async def count_public_media_references(
 
     from sqlalchemy import or_, select
     from app.models.portfolio import PortfolioMedia
-    from app.models.social import Post
+    from app.models.social import Post, Story, Reel
     from app.models.production_house import ProductionHouse
 
     total_refs = 0
@@ -1301,6 +1301,34 @@ async def count_public_media_references(
         if exclude_ph_id is not None and row_id == exclude_ph_id:
             continue
         if l_url and extract_file_key(l_url) == canonical_key:
+            total_refs += 1
+
+    # 4. Query Story (media_url)
+    stmt_story = select(Story.id, Story.media_url).where(
+        or_(
+            Story.media_url == canonical_key,
+            Story.media_url.like(f"%{escaped_key}%", escape="\\"),
+        )
+    )
+    res_story = await db.execute(stmt_story)
+    for row_id, s_url in res_story.all():
+        if s_url and extract_file_key(s_url) == canonical_key:
+            total_refs += 1
+
+    # 5. Query Reel (media_url, thumbnail_url)
+    stmt_reel = select(Reel.id, Reel.media_url, Reel.thumbnail_url).where(
+        or_(
+            Reel.media_url == canonical_key,
+            Reel.media_url.like(f"%{escaped_key}%", escape="\\"),
+            Reel.thumbnail_url == canonical_key,
+            Reel.thumbnail_url.like(f"%{escaped_key}%", escape="\\"),
+        )
+    )
+    res_reel = await db.execute(stmt_reel)
+    for row_id, r_m_url, r_t_url in res_reel.all():
+        if r_m_url and extract_file_key(r_m_url) == canonical_key:
+            total_refs += 1
+        if r_t_url and extract_file_key(r_t_url) == canonical_key:
             total_refs += 1
 
     return total_refs

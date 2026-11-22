@@ -102,11 +102,11 @@ class TeamSection extends ConsumerWidget {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _MemberTile(
                     collaboration: c,
-                    onOpenProfile: () => context.push('/talent/${c.talent.id}'),
+                    onOpenProfile: () => context.push('/talent-profile/${c.talent.id}'),
                     onSelected: (action) {
                       switch (action) {
                         case 'message':
-                         context.push('/chat/${c.id}');
+                          context.push('/ph-chat?collaborationId=${c.id}');
                         case 'cancel':
                         case 'remove':
                           _remove(context, ref, c, confirm: true);

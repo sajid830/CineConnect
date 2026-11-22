@@ -40,22 +40,58 @@ class Talent {
   });
 
   factory Talent.fromJson(Map<String, dynamic> json) {
+    List<String> parsedSkills = [];
+    if (json['skills'] is List) {
+      parsedSkills = (json['skills'] as List)
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+
+    final rawName = json['full_name']?.toString() ?? '';
+    final name = rawName.isNotEmpty ? rawName : 'Applicant';
+
     return Talent(
-      id: json['id'] as String,
-      fullName: json['full_name'] as String,
-      role: json['role'] as String,
-      location: json['location'] as String,
-      bio: json['bio'] as String,
-      experienceYears: json['experience_years'] as int,
-      isVerified: json['is_verified'] as bool,
-      skills: List<String>.from(json['skills'] as List),
+      id: json['id']?.toString() ?? '',
+      fullName: name,
+      role: json['role']?.toString() ?? 'Talent',
+      location: json['location']?.toString() ?? 'Pan-India',
+      bio: json['bio']?.toString() ?? '',
+      experienceYears: (json['experience_years'] is num)
+          ? (json['experience_years'] as num).toInt()
+          : 0,
+      isVerified: json['is_verified'] == true,
+      skills: parsedSkills,
+    );
+  }
+
+  Talent copyWith({
+    String? id,
+    String? fullName,
+    String? role,
+    String? location,
+    String? bio,
+    int? experienceYears,
+    bool? isVerified,
+    List<String>? skills,
+  }) {
+    return Talent(
+      id: id ?? this.id,
+      fullName: fullName ?? this.fullName,
+      role: role ?? this.role,
+      location: location ?? this.location,
+      bio: bio ?? this.bio,
+      experienceYears: experienceYears ?? this.experienceYears,
+      isVerified: isVerified ?? this.isVerified,
+      skills: skills ?? this.skills,
     );
   }
 
   String get initials {
     final parts = fullName.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return 'CC';
     final first = parts.first[0];
-    final second = parts.length > 1 ? parts[1][0] : '';
+    final second = parts.length > 1 && parts[1].isNotEmpty ? parts[1][0] : '';
     return (first + second).toUpperCase();
   }
 }

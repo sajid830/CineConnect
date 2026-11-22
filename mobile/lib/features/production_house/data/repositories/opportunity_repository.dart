@@ -1,4 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_endpoints.dart';
 import '../models/opportunity.dart';
 
 abstract class OpportunityRepository {
@@ -115,6 +117,108 @@ class MockOpportunityRepository implements OpportunityRepository {
   }
 }
 
+class RemoteOpportunityRepository implements OpportunityRepository {
+  final ApiClient _client;
+
+  RemoteOpportunityRepository({ApiClient? client}) : _client = client ?? ApiClient();
+
+  @override
+  Future<List<Opportunity>> getOpportunities() async {
+    try {
+      final res = await _client.get(ApiEndpoints.myOpportunities);
+      if (res is List) {
+        return res.map((item) {
+          if (item is Map) {
+            return Opportunity.fromJson(Map<String, dynamic>.from(item));
+          }
+          throw const FormatException('Expected opportunity item to be a map');
+        }).toList();
+      }
+      return [];
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) {
+        // Production house profile not found or no opportunities yet
+        return [];
+      }
+      rethrow;
+    } catch (e) {
+      throw ApiException(statusCode: 0, message: 'Failed to load casting calls: $e');
+    }
+  }
+
+  @override
+  Future<Opportunity> createOpportunity({
+    required String projectId,
+    required String title,
+    required String requirements,
+    required DateTime deadline,
+  }) async {
+    final deadlineStr = deadline.toIso8601String().split('T').first;
+    final body = {
+      'project_id': projectId,
+      'title': title,
+      'requirements': requirements,
+      'deadline': deadlineStr,
+      'status': 'draft',
+    };
+
+    final res = await _client.post(ApiEndpoints.opportunities, body: body);
+    if (res is Map) {
+      return Opportunity.fromJson(Map<String, dynamic>.from(res));
+    }
+    throw ApiException(
+      statusCode: 500,
+      message: 'Invalid response from server on casting call creation',
+    );
+  }
+
+  @override
+  Future<void> updateOpportunity({
+    required String id,
+    required String projectId,
+    required String title,
+    required String requirements,
+    required DateTime deadline,
+  }) async {
+    final deadlineStr = deadline.toIso8601String().split('T').first;
+    final body = {
+      'title': title,
+      'requirements': requirements,
+      'deadline': deadlineStr,
+    };
+
+    await _client.patch(ApiEndpoints.opportunityDetails(id), body: body);
+  }
+
+  @override
+  Future<void> updateStatus(String id, OpportunityStatus status) async {
+    final backendStatus = Opportunity.toBackendStatus(status);
+    await _client.patch(
+      ApiEndpoints.opportunityStatus(id),
+      body: {'status': backendStatus},
+    );
+  }
+
+  @override
+  Future<void> deleteOpportunity(String id) async {
+    await _client.delete(ApiEndpoints.opportunityDetails(id));
+  }
+
+  /// Optional helper to fetch single opportunity details by UUID
+  Future<Opportunity?> getOpportunityById(String id) async {
+    try {
+      final res = await _client.get(ApiEndpoints.opportunityDetails(id));
+      if (res is Map) {
+        return Opportunity.fromJson(Map<String, dynamic>.from(res));
+      }
+      return null;
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+}
+
 final opportunityRepositoryProvider = Provider<OpportunityRepository>((ref) {
-  return MockOpportunityRepository();
+  return RemoteOpportunityRepository();
 });

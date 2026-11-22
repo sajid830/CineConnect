@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:cineconnect/app/theme.dart';
 import '../../core/state/app_state.dart';
 
@@ -142,6 +143,17 @@ class CineAppHeader extends StatelessWidget {
             ),
           ),
           const Spacer(),
+          _buildTopAction(
+            label: 'Search',
+            onTap: () => context.push('/search'),
+            icon: const Icon(
+              Icons.search_rounded,
+              color: CineColors.textPrimary,
+              size: 22,
+            ),
+            showBadge: false,
+          ),
+          const SizedBox(width: 2),
           _buildTopAction(
             label: 'Notifications',
             onTap: onOpenNotifications,

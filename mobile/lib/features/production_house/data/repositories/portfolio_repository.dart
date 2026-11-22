@@ -1,8 +1,41 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_endpoints.dart';
 import '../models/portfolio_item.dart';
 
 abstract class PortfolioRepository {
   Future<List<PortfolioItem>> getPortfolio(String userId);
+  Future<String?> getDownloadUrl(String mediaId);
+}
+
+class RemotePortfolioRepository implements PortfolioRepository {
+  final ApiClient _client;
+
+  RemotePortfolioRepository({ApiClient? client})
+      : _client = client ?? ApiClient();
+
+  @override
+  Future<List<PortfolioItem>> getPortfolio(String userId) async {
+    final res = await _client.get(ApiEndpoints.userPortfolio(userId));
+    if (res is List) {
+      return res
+          .whereType<Map<String, dynamic>>()
+          .map(PortfolioItem.fromJson)
+          .toList();
+    }
+    return [];
+  }
+
+  @override
+  Future<String?> getDownloadUrl(String mediaId) async {
+    try {
+      final res = await _client.get(ApiEndpoints.portfolioDownloadUrl(mediaId));
+      if (res is Map<String, dynamic> && res['playback_url'] != null) {
+        return res['playback_url'].toString();
+      }
+    } catch (_) {}
+    return null;
+  }
 }
 
 class MockPortfolioRepository implements PortfolioRepository {
@@ -96,8 +129,11 @@ class MockPortfolioRepository implements PortfolioRepository {
     await Future.delayed(const Duration(milliseconds: 600));
     return _byUser[userId] ?? const [];
   }
+
+  @override
+  Future<String?> getDownloadUrl(String mediaId) async => null;
 }
 
 final portfolioRepositoryProvider = Provider<PortfolioRepository>((ref) {
-  return MockPortfolioRepository();
+  return RemotePortfolioRepository();
 });

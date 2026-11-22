@@ -153,6 +153,7 @@ class Settings(BaseSettings):
     def internal_storage_endpoint(self) -> str:
         """Internal endpoint used for backend server-to-MinIO communication."""
         endpoint = (self.MINIO_INTERNAL_ENDPOINT or "").strip() or self.MINIO_ENDPOINT
+        endpoint = endpoint.rstrip("/")
         if not endpoint.startswith("http://") and not endpoint.startswith("https://"):
             protocol = "https" if self.MINIO_USE_SSL else "http"
             return f"{protocol}://{endpoint}"
@@ -162,6 +163,7 @@ class Settings(BaseSettings):
     def public_storage_endpoint(self) -> str:
         """Client-reachable public endpoint for mobile/browser uploads and media URLs."""
         endpoint = (self.MINIO_PUBLIC_ENDPOINT or "").strip() or self.MINIO_ENDPOINT
+        endpoint = endpoint.rstrip("/")
         if not endpoint.startswith("http://") and not endpoint.startswith("https://"):
             protocol = "https" if self.MINIO_USE_SSL else "http"
             return f"{protocol}://{endpoint}"

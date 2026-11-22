@@ -9,16 +9,50 @@ class NotificationBell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final unread = ref.watch(unreadCountProvider);
+    final unreadState = ref.watch(unreadCountProvider);
+    final count = unreadState.count;
+
+    final bool isLabelVisible;
+    final String labelText;
+    final Color badgeColor;
+    final Color textColor;
+
+    if (unreadState.hasError && count == null) {
+      // Represent initial failure without falsely claiming zero unread
+      isLabelVisible = true;
+      labelText = '!';
+      badgeColor = AppColors.error;
+      textColor = Colors.white;
+    } else if (count != null && count > 0) {
+      // Known unread count from server
+      isLabelVisible = true;
+      labelText = count > 9 ? '9+' : '$count';
+      badgeColor = AppColors.gold;
+      textColor = AppColors.black;
+    } else {
+      isLabelVisible = false;
+      labelText = '';
+      badgeColor = AppColors.gold;
+      textColor = AppColors.black;
+    }
+
+    final tooltip = unreadState.hasError && count == null
+        ? 'Failed to load notifications. Tap to retry.'
+        : 'Notifications';
 
     return IconButton(
-      tooltip: 'Notifications',
-      onPressed: () => context.push('/notifications'),
+      tooltip: tooltip,
+      onPressed: () {
+        if (unreadState.hasError && count == null) {
+          ref.read(unreadCountProvider.notifier).retry();
+        }
+        context.push('/notifications');
+      },
       icon: Badge(
-        isLabelVisible: unread > 0,
-        label: Text(unread > 9 ? '9+' : '$unread'),
-        backgroundColor: AppColors.gold,
-        textColor: AppColors.black,
+        isLabelVisible: isLabelVisible,
+        label: Text(labelText),
+        backgroundColor: badgeColor,
+        textColor: textColor,
         child: const Icon(Icons.notifications_none),
       ),
     );

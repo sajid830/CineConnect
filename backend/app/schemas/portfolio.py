@@ -25,4 +25,5 @@ class PortfolioMediaResponse(PortfolioMediaBase):
 
     id: UUID
     user_id: UUID
+    playback_url: Optional[str] = None
     created_at: datetime

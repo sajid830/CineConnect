@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:cineconnect/app/theme.dart';
-import '../../core/models/craft_models.dart';
+import '../../core/services/media_upload_service.dart';
 import '../../core/state/app_state.dart';
 
 class CreateActionSheet extends StatefulWidget {
@@ -14,7 +15,17 @@ class CreateActionSheet extends StatefulWidget {
 
 class _CreateActionSheetState extends State<CreateActionSheet> {
   final TextEditingController _captionController = TextEditingController();
-  bool _hasSelectedVideo = false;
+  final ImagePicker _picker = ImagePicker();
+
+  XFile? _selectedVideoFile;
+  String? _selectedVideoFileName;
+  int? _selectedVideoSizeBytes;
+  String? _selectedVideoMimeType;
+  String? _cachedUploadedMediaUrl;
+
+  bool _isUploading = false;
+  String? _uploadStatusMessage;
+
   bool _shareToFeed = true;
   bool _shareToStory = false;
   String _selectedAudio = 'Original audio';
@@ -32,8 +43,69 @@ class _CreateActionSheetState extends State<CreateActionSheet> {
     super.dispose();
   }
 
-  void _selectVideo() {
-    setState(() => _hasSelectedVideo = true);
+  Future<void> _selectVideo() async {
+    if (_isUploading) return;
+    try {
+      final XFile? video = await _picker.pickVideo(source: ImageSource.gallery);
+      if (video == null) {
+        // User cancelled picker -> preserve existing selection
+        return;
+      }
+
+      final length = await video.length();
+      if (length > 100 * 1024 * 1024) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: Color(0xFF3B1212),
+              content: Text('Video exceeds the 100 MB maximum size limit.'),
+            ),
+          );
+        }
+        return;
+      }
+
+      final mimeType = MediaUploadService.resolveMimeType(video.name);
+      if (!mimeType.startsWith('video/')) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: Color(0xFF3B1212),
+              content: Text('Please select a valid video file (MP4, MOV, MKV, or WEBM).'),
+            ),
+          );
+        }
+        return;
+      }
+
+      setState(() {
+        _selectedVideoFile = video;
+        _selectedVideoFileName = video.name;
+        _selectedVideoSizeBytes = length;
+        _selectedVideoMimeType = mimeType;
+        _cachedUploadedMediaUrl = null; // Selecting a different video invalidates previous video cache
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF3B1212),
+            content: Text('Could not access video picker: $e'),
+          ),
+        );
+      }
+    }
+  }
+
+  void _removeSelectedVideo() {
+    if (_isUploading) return;
+    setState(() {
+      _selectedVideoFile = null;
+      _selectedVideoFileName = null;
+      _selectedVideoSizeBytes = null;
+      _selectedVideoMimeType = null;
+      _cachedUploadedMediaUrl = null;
+    });
   }
 
   void _cycleAudio() {
@@ -43,8 +115,10 @@ class _CreateActionSheetState extends State<CreateActionSheet> {
     });
   }
 
-  void _shareReel() {
-    if (!_hasSelectedVideo) {
+  Future<void> _shareReel() async {
+    if (_isUploading) return;
+
+    if (_selectedVideoFile == null && _cachedUploadedMediaUrl == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: CineColors.surfaceElevated,
@@ -58,37 +132,81 @@ class _CreateActionSheetState extends State<CreateActionSheet> {
       return;
     }
 
-    final caption = _captionController.text.trim();
-    final reel = CineReelItem(
-      id: 'reel-${DateTime.now().millisecondsSinceEpoch}',
-      creatorName: 'You (DOP / Talent)',
-      creatorCraft: 'Cinematographer (ISC)',
-      creatorAvatar: 'YOU',
-      title: caption.isEmpty ? 'New reel from the set' : caption,
-      audioTrack: _selectedAudio,
-      smpteTimecode: 'TC 00:00:30:00',
-      craftSpecialty: 'Cinematography / DOP',
-      likesCount: 0,
-      commentsCount: 0,
-      reelType: 'Reel',
-    );
+    setState(() {
+      _isUploading = true;
+      _uploadStatusMessage = _cachedUploadedMediaUrl != null
+          ? 'Reusing uploaded media...'
+          : 'Streaming video to MinIO storage...';
+    });
 
-    widget.appState.addReel(reel);
-    final messenger = ScaffoldMessenger.of(context);
-    Navigator.of(context).pop();
-    messenger.showSnackBar(
-      const SnackBar(
-        backgroundColor: CineColors.surfaceElevated,
-        content: Text(
-          'Reel shared to your profile',
-          style: TextStyle(color: CineColors.gold, fontWeight: FontWeight.w700),
-        ),
-      ),
-    );
+    try {
+      String? uploadedUrl = _cachedUploadedMediaUrl;
+      if (uploadedUrl == null && _selectedVideoFile != null) {
+        final uploadService = MediaUploadService();
+        final uploadRes = await uploadService.uploadXFile(
+          file: _selectedVideoFile!,
+          contentType: _selectedVideoMimeType ?? 'video/mp4',
+          purpose: 'public',
+        );
+        uploadedUrl = uploadRes.publicUrl;
+        _cachedUploadedMediaUrl = uploadRes.publicUrl;
+      }
+
+      if (mounted) {
+        setState(() {
+          _uploadStatusMessage = 'Publishing showreel to cinema ledger...';
+        });
+      }
+
+      final caption = _captionController.text.trim();
+      final title = caption.isEmpty ? 'Cinematography Showreel' : caption;
+
+      await widget.appState.addReel(
+        title: title,
+        mediaUrl: uploadedUrl!,
+        caption: caption.isNotEmpty ? caption : null,
+        audioTrack: _selectedAudio,
+        smpteTimecode: '00:00:30:00',
+        craftSpecialty: widget.appState.myProfile?.primaryCraft ?? 'Cinematography / DOP',
+        reelType: 'Cinematography Showreel',
+      );
+
+      // On successful creation: clear retry cache, close modal and show success
+      _cachedUploadedMediaUrl = null;
+
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: CineColors.surfaceElevated,
+            content: Text(
+              'Reel published successfully!',
+              style: TextStyle(color: CineColors.gold, fontWeight: FontWeight.w700),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadStatusMessage = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF3B1212),
+            content: Text('Failed to publish reel: $e. Tap Share to retry.'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final hasSelection = _selectedVideoFile != null || _cachedUploadedMediaUrl != null;
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.92,
       decoration: const BoxDecoration(
@@ -133,17 +251,27 @@ class _CreateActionSheetState extends State<CreateActionSheet> {
                       ),
                     ),
                     const Spacer(),
-                    TextButton(
-                      onPressed: _shareReel,
-                      child: const Text(
-                        'Share',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: CineColors.gold,
+                    if (_isUploading)
+                      const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          valueColor: AlwaysStoppedAnimation<Color>(CineColors.gold),
+                        ),
+                      )
+                    else
+                      TextButton(
+                        onPressed: _shareReel,
+                        child: const Text(
+                          'Share',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: CineColors.gold,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -165,13 +293,13 @@ class _CreateActionSheetState extends State<CreateActionSheet> {
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
-                              colors: _hasSelectedVideo
+                              colors: hasSelection
                                   ? [const Color(0xFF2A2412), const Color(0xFF0D0E12)]
                                   : [CineColors.surfaceElevated, const Color(0xFF0D0E12)],
                             ),
                             border: Border.all(
-                              color: _hasSelectedVideo ? CineColors.gold : CineColors.border,
-                              width: _hasSelectedVideo ? 1.5 : 1,
+                              color: hasSelection ? CineColors.gold : CineColors.border,
+                              width: hasSelection ? 1.5 : 1,
                             ),
                           ),
                           child: Stack(
@@ -198,51 +326,92 @@ class _CreateActionSheetState extends State<CreateActionSheet> {
                                   ),
                                 ),
                               ),
-                              Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 64,
-                                      height: 64,
+                              if (hasSelection && !_isUploading)
+                                Positioned(
+                                  top: 12,
+                                  left: 12,
+                                  child: GestureDetector(
+                                    onTap: _removeSelectedVideo,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(5),
                                       decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.65),
                                         shape: BoxShape.circle,
-                                        color: CineColors.gold.withValues(alpha: 0.15),
-                                        border: Border.all(
-                                          color: CineColors.gold.withValues(alpha: 0.5),
-                                        ),
+                                        border: Border.all(color: Colors.redAccent.withValues(alpha: 0.6)),
                                       ),
-                                      child: Icon(
-                                        _hasSelectedVideo
-                                            ? Icons.movie_creation_rounded
-                                            : Icons.add_rounded,
-                                        color: CineColors.gold,
-                                        size: 30,
-                                      ),
+                                      child: const Icon(Icons.close_rounded, size: 16, color: Colors.redAccent),
                                     ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      _hasSelectedVideo
-                                          ? 'Reel selected • 00:30'
-                                          : 'Tap to select a reel',
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: CineColors.textPrimary,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _hasSelectedVideo
-                                          ? 'Tap again to replace'
-                                          : 'Choose a 9:16 clip from your camera roll',
-                                      style: const TextStyle(
-                                        fontSize: 11.5,
-                                        color: CineColors.textMuted,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
+                              Center(
+                                child: _isUploading
+                                    ? Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const CircularProgressIndicator(
+                                            valueColor: AlwaysStoppedAnimation<Color>(CineColors.gold),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          Text(
+                                            _uploadStatusMessage ?? 'Processing video...',
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: CineColors.goldLight,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 64,
+                                            height: 64,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: CineColors.gold.withValues(alpha: 0.15),
+                                              border: Border.all(
+                                                color: CineColors.gold.withValues(alpha: 0.5),
+                                              ),
+                                            ),
+                                            child: Icon(
+                                              hasSelection
+                                                  ? Icons.movie_creation_rounded
+                                                  : Icons.add_rounded,
+                                              color: CineColors.gold,
+                                              size: 30,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                                            child: Text(
+                                              hasSelection
+                                                  ? (_selectedVideoFileName ?? 'Video selected')
+                                                  : 'Tap to select a reel',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                                color: CineColors.textPrimary,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            hasSelection
+                                                ? '${(_selectedVideoSizeBytes != null ? (_selectedVideoSizeBytes! / (1024 * 1024)).toStringAsFixed(1) : '0')} MB • ${_cachedUploadedMediaUrl != null ? 'Uploaded (Cached)' : 'Tap again to replace'}'
+                                                : 'Choose a 9:16 clip from your gallery (up to 100 MB)',
+                                            style: const TextStyle(
+                                              fontSize: 11.5,
+                                              color: CineColors.textMuted,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                               ),
                             ],
                           ),
@@ -330,7 +499,7 @@ class _CreateActionSheetState extends State<CreateActionSheet> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _shareReel,
+                          onPressed: _isUploading ? null : _shareReel,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: CineColors.gold,
                             foregroundColor: Colors.black,
@@ -339,9 +508,9 @@ class _CreateActionSheetState extends State<CreateActionSheet> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                           ),
-                          child: const Text(
-                            'Share reel',
-                            style: TextStyle(
+                          child: Text(
+                            _isUploading ? 'Uploading showreel...' : 'Share reel',
+                            style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
                             ),

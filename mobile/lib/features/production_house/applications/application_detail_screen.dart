@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:cineconnect/app/theme.dart';
+import 'package:cineconnect/core/network/api_client.dart';
 import 'package:cineconnect/features/production_house/data/models/application.dart';
 import 'package:cineconnect/features/production_house/data/models/opportunity.dart';
+import 'package:cineconnect/features/production_house/data/repositories/application_repository.dart';
 import 'package:cineconnect/features/production_house/opportunities/opportunities_provider.dart';
 import 'application_status_badge.dart';
 import 'applications_provider.dart';
+import 'audition_video_player_dialog.dart';
 
 class ApplicationDetailScreen extends ConsumerStatefulWidget {
   final String applicationId;
@@ -21,6 +25,99 @@ class ApplicationDetailScreen extends ConsumerStatefulWidget {
 class _ApplicationDetailScreenState
     extends ConsumerState<ApplicationDetailScreen> {
   bool _busy = false;
+  bool _loadingResume = false;
+  bool _loadingReel = false;
+
+  Future<void> _viewResume(JobApplication application) async {
+    setState(() => _loadingResume = true);
+    try {
+      final downloadUrl = await ref
+          .read(applicationRepositoryProvider)
+          .getResumeDownloadUrl(application.id);
+
+      final uri = Uri.parse(downloadUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        throw Exception('Could not open external PDF viewer');
+      }
+    } catch (e) {
+      if (mounted) {
+        String message = 'Could not open resume.';
+        if (e is ApiException) {
+          if (e.statusCode == 404) {
+            message = 'Resume file not found or has been removed.';
+          } else if (e.statusCode == 403) {
+            message = 'You do not have permission to access this resume.';
+          } else {
+            message = e.message;
+          }
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF3B1212),
+            content: Text(
+              message,
+              style: const TextStyle(color: Color(0xFFFF8B8B)),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingResume = false);
+    }
+  }
+
+  Future<void> _watchAuditionReel(
+    JobApplication application,
+    String opportunityTitle,
+  ) async {
+    setState(() => _loadingReel = true);
+    try {
+      final downloadUrl = await ref
+          .read(applicationRepositoryProvider)
+          .getReelDownloadUrl(application.id);
+
+      if (!mounted) return;
+
+      await showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogCtx) => AuditionVideoPlayerDialog(
+          downloadUrl: downloadUrl,
+          candidateName: application.talent.fullName,
+          projectTitle: opportunityTitle,
+          onRefreshUrl: () => ref
+              .read(applicationRepositoryProvider)
+              .getReelDownloadUrl(application.id),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        String message = 'Could not load audition video.';
+        if (e is ApiException) {
+          if (e.statusCode == 404) {
+            message = 'Audition video not found or has been removed.';
+          } else if (e.statusCode == 403) {
+            message = 'You do not have permission to access this audition video.';
+          } else {
+            message = e.message;
+          }
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF3B1212),
+            content: Text(
+              message,
+              style: const TextStyle(color: Color(0xFFFF8B8B)),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingReel = false);
+    }
+  }
 
   Future<void> _changeStatus(ApplicationStatus status) async {
     setState(() => _busy = true);
@@ -30,8 +127,11 @@ class _ApplicationDetailScreenState
           .setStatus(widget.applicationId, status);
     } catch (e) {
       if (mounted) {
+        final message = e is ApiException
+            ? e.message
+            : 'Could not update the application';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not update the application')),
+          SnackBar(content: Text(message)),
         );
       }
     } finally {
@@ -108,6 +208,16 @@ class _ApplicationDetailScreenState
           ),
           const SizedBox(height: 12),
           ElevatedButton(
+            onPressed:
+                _busy ? null : () => _changeStatus(ApplicationStatus.accepted),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.success,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Accept candidate'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -116,6 +226,26 @@ class _ApplicationDetailScreenState
               );
             },
             child: const Text('Contact candidate'),
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed:
+                _busy ? null : () => _changeStatus(ApplicationStatus.underReview),
+            child: const Text('Move back to review'),
+          ),
+        ];
+      case ApplicationStatus.accepted:
+        return [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.success),
+            ),
+            child: const Text(
+              'Candidate accepted for this role. Contracting and onboarding underway.',
+            ),
           ),
           const SizedBox(height: 12),
           TextButton(
@@ -258,6 +388,161 @@ class _ApplicationDetailScreenState
                   ),
                   const SizedBox(height: 8),
                   Text(a.coverLetter),
+
+                  // Audition Media Attachments
+                  if (a.reelUrl != null || a.resumeUrl != null) ...[
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Audition Attachments',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+                    if (a.reelUrl != null) ...[
+                      InkWell(
+                        onTap: (_loadingReel || _busy)
+                            ? null
+                            : () => _watchAuditionReel(a, opportunityTitle),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.gold, width: 1.2),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.gold.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.play_circle_fill_rounded,
+                                  color: AppColors.gold,
+                                  size: 24,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: const [
+                                    Text(
+                                      'Audition Self-Tape Video',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Watch candidate audition tape with in-app playback',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_loadingReel)
+                                const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.gold,
+                                  ),
+                                )
+                              else
+                                const Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: AppColors.gold,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    if (a.resumeUrl != null) ...[
+                      InkWell(
+                        onTap: (_loadingResume || _busy)
+                            ? null
+                            : () => _viewResume(a),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.picture_as_pdf_rounded,
+                                  color: AppColors.gold,
+                                  size: 24,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: const [
+                                    Text(
+                                      'Resume / CV (PDF)',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Open authorized PDF in document viewer',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_loadingResume)
+                                const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.gold,
+                                  ),
+                                )
+                              else
+                                const Icon(
+                                  Icons.open_in_new_rounded,
+                                  color: AppColors.textMuted,
+                                  size: 20,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
                   const SizedBox(height: 32),
                   ..._actions(a),
                 ],

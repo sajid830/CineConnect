@@ -1,4 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_endpoints.dart';
 import '../models/app_notification.dart';
 
 abstract class NotificationRepository {
@@ -7,6 +9,53 @@ abstract class NotificationRepository {
   Future<void> markRead(String id);
 
   Future<void> markAllRead();
+
+  Future<int> getUnreadCount();
+}
+
+class RemoteNotificationRepository implements NotificationRepository {
+  final ApiClient _client;
+
+  RemoteNotificationRepository({ApiClient? client})
+      : _client = client ?? ApiClient();
+
+  @override
+  Future<List<AppNotification>> getNotifications() async {
+    final res = await _client.get(ApiEndpoints.notifications, queryParams: {'limit': 50});
+    if (res is List) {
+      final Map<String, AppNotification> deduplicated = {};
+      for (final item in res.whereType<Map<String, dynamic>>()) {
+        final notif = AppNotification.fromJson(item);
+        if (notif.id.isNotEmpty) {
+          deduplicated[notif.id] = notif;
+        }
+      }
+      return deduplicated.values.toList();
+    }
+    return [];
+  }
+
+  @override
+  Future<void> markRead(String id) async {
+    await _client.patch(ApiEndpoints.markNotificationRead(id));
+  }
+
+  @override
+  Future<void> markAllRead() async {
+    await _client.patch(ApiEndpoints.markAllNotificationsRead);
+  }
+
+  @override
+  Future<int> getUnreadCount() async {
+    final res = await _client.get(ApiEndpoints.unreadNotificationCount);
+    if (res is Map<String, dynamic> && res['unread_count'] is num) {
+      return (res['unread_count'] as num).toInt();
+    }
+    throw ApiException(
+      statusCode: 500,
+      message: 'Invalid response from unread-count endpoint',
+    );
+  }
 }
 
 class MockNotificationRepository implements NotificationRepository {
@@ -72,8 +121,14 @@ class MockNotificationRepository implements NotificationRepository {
     await Future.delayed(const Duration(milliseconds: 400));
     _items = [for (final n in _items) n.copyWith(isRead: true)];
   }
+
+  @override
+  Future<int> getUnreadCount() async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    return _items.where((n) => !n.isRead).length;
+  }
 }
 
 final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
-  return MockNotificationRepository();
+  return RemoteNotificationRepository();
 });

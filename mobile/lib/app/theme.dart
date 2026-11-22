@@ -20,6 +20,7 @@ class AppColors {
   static const Color background = Color(0xFF0D0D0D);
   static const Color surfaceElevated = Color(0xFF1F1F1F);
   static const Color surfaceCard = Color(0xFF141419);
+  static const Color card = surfaceCard;
   static const Color darkest = Color(0xFF080808);
   static const Color textSecondary = textMuted;
   static const Color goldDark = Color(0xFFB08D23);

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cineconnect/app/theme.dart';
 import 'package:cineconnect/features/production_house/data/models/portfolio_item.dart';
+import 'package:cineconnect/features/production_house/data/repositories/portfolio_repository.dart';
+import 'package:cineconnect/features/production_house/applications/audition_video_player_dialog.dart';
 import 'package:cineconnect/shared/widgets/app_card.dart';
 import 'portfolio_provider.dart';
 
@@ -78,15 +80,23 @@ class PortfolioSection extends ConsumerWidget {
   }
 }
 
-class _PortfolioCard extends StatelessWidget {
+class _PortfolioCard extends ConsumerWidget {
   final PortfolioItem item;
 
   const _PortfolioCard({required this.item});
 
-  void _showDetails(BuildContext context) {
+  void _showDetails(BuildContext context, WidgetRef ref) {
+    final activeMediaUrl = item.playbackUrl ?? item.mediaUrl;
+    final isVideo = item.type == PortfolioType.showreel || item.type == PortfolioType.film;
+    final isPhoto = item.type == PortfolioType.photo;
+
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: AppColors.surfaceCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (_) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -94,37 +104,131 @@ class _PortfolioCard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                item.title,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.gold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _subtitle(item),
-                style: const TextStyle(color: AppColors.textMuted),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.title,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.gold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _subtitle(item),
+                          style: const TextStyle(color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: AppColors.textMuted),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
-              Text(item.description),
-              if (item.mediaUrl != null) ...[
+              if (item.description.isNotEmpty) ...[
+                Text(
+                  item.description,
+                  style: const TextStyle(fontSize: 14, height: 1.4),
+                ),
                 const SizedBox(height: 16),
+              ],
+              if (isPhoto && activeMediaUrl != null && activeMediaUrl.isNotEmpty) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    constraints: const BoxConstraints(maxHeight: 280),
+                    width: double.infinity,
+                    color: AppColors.surface,
+                    child: Image.network(
+                      activeMediaUrl,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (ctx, child, progress) {
+                        if (progress == null) return child;
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(24),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      },
+                      errorBuilder: (ctx, error, stackTrace) => const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'Unable to load photo preview',
+                            style: TextStyle(color: AppColors.textMuted),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (isVideo && activeMediaUrl != null && activeMediaUrl.isNotEmpty) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _openVideoPlayer(context, ref, activeMediaUrl);
+                    },
+                    icon: const Icon(Icons.play_circle_fill_rounded, size: 22),
+                    label: const Text('Play Showreel / Video'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.gold,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (item.mediaUrl != null && item.mediaUrl!.isNotEmpty) ...[
                 const Text(
-                  'Link',
-                  style: TextStyle(fontWeight: FontWeight.w600),
+                  'Asset Link',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 4),
                 SelectableText(
                   item.mediaUrl!,
-                  style: const TextStyle(color: AppColors.goldLight),
+                  style: const TextStyle(color: AppColors.goldLight, fontSize: 13),
                 ),
+                const SizedBox(height: 12),
               ],
-              const SizedBox(height: 16),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _openVideoPlayer(BuildContext context, WidgetRef ref, String initialUrl) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => AuditionVideoPlayerDialog(
+        downloadUrl: initialUrl,
+        candidateName: item.title,
+        projectTitle: item.role ?? 'Portfolio Video',
+        onRefreshUrl: () async {
+          final repo = ref.read(portfolioRepositoryProvider);
+          final fresh = await repo.getDownloadUrl(item.id);
+          return fresh ?? initialUrl;
+        },
       ),
     );
   }
@@ -139,10 +243,12 @@ class _PortfolioCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final photoOrThumbUrl = item.thumbnailUrl ?? ((item.type == PortfolioType.photo) ? (item.playbackUrl ?? item.mediaUrl) : null);
+
     return AppCard(
       padding: const EdgeInsets.all(12),
-      onTap: () => _showDetails(context),
+      onTap: () => _showDetails(context, ref),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -151,10 +257,10 @@ class _PortfolioCard extends StatelessWidget {
             child: SizedBox(
               width: 64,
               height: 64,
-              child: item.thumbnailUrl == null
+              child: photoOrThumbUrl == null
                   ? _IconTile(type: item.type)
                   : Image.network(
-                      item.thumbnailUrl!,
+                      photoOrThumbUrl,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => _IconTile(type: item.type),
                     ),
