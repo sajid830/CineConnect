@@ -17,13 +17,7 @@ class NotificationBell extends ConsumerWidget {
     final Color badgeColor;
     final Color textColor;
 
-    if (unreadState.hasError && count == null) {
-      // Represent initial failure without falsely claiming zero unread
-      isLabelVisible = true;
-      labelText = '!';
-      badgeColor = AppColors.error;
-      textColor = Colors.white;
-    } else if (count != null && count > 0) {
+    if (count != null && count > 0) {
       // Known unread count from server
       isLabelVisible = true;
       labelText = count > 9 ? '9+' : '$count';
@@ -46,7 +40,7 @@ class NotificationBell extends ConsumerWidget {
         if (unreadState.hasError && count == null) {
           ref.read(unreadCountProvider.notifier).retry();
         }
-        context.push('/notifications');
+        context.push('/ph-notifications');
       },
       icon: Badge(
         isLabelVisible: isLabelVisible,

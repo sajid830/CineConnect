@@ -180,5 +180,6 @@ class MockTalentRepository implements TalentRepository {
 }
 
 final talentRepositoryProvider = Provider<TalentRepository>((ref) {
-  return RemoteTalentRepository();
+  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: true);
+  return useMock ? MockTalentRepository() : RemoteTalentRepository();
 });

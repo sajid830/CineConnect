@@ -34,14 +34,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         leading: IconButton(
           tooltip: 'Company profile',
           icon: const Icon(Icons.account_circle_outlined),
-          onPressed: () => context.push('/profile'),
+          onPressed: () => context.push('/company-profile'),
         ),
         title: Text(_titles[_selectedIndex]),
         actions: [
           IconButton(
             tooltip: 'Messages',
             icon: const Icon(Icons.chat_bubble_outline),
-            onPressed: () => context.push('/chats'),
+            onPressed: () => context.push('/ph-chat'),
           ),
           const NotificationBell(),
         ],
@@ -78,7 +78,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           NavigationDestination(
             icon: Icon(Icons.assignment_outlined),
             selectedIcon: Icon(Icons.assignment),
-            label: 'Applications',
+            label: 'Apps',
           ),
           NavigationDestination(
             icon: Icon(Icons.search),

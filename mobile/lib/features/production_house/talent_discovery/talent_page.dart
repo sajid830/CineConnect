@@ -161,7 +161,7 @@ class _TalentCard extends StatelessWidget {
     final t = talent;
     return InkWell(
       borderRadius: BorderRadius.circular(14),
-      onTap: () => context.push('/talent/${t.id}'),
+      onTap: () => context.push('/talent-profile/${t.id}'),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(

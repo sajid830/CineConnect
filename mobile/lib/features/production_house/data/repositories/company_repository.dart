@@ -230,5 +230,6 @@ class RemoteCompanyRepository implements CompanyRepository {
 }
 
 final companyRepositoryProvider = Provider<CompanyRepository>((ref) {
-  return RemoteCompanyRepository();
+  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: true);
+  return useMock ? MockCompanyRepository() : RemoteCompanyRepository();
 });

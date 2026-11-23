@@ -69,7 +69,7 @@ class CompanyProfileScreen extends ConsumerWidget {
               title: const Text('Edit studio profile'),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                context.push('/profile/edit');
+                context.push('/company-profile/edit');
               },
             ),
             ListTile(
@@ -590,7 +590,7 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
               _actionButton(
                 icon: Icons.edit_outlined,
                 label: 'Edit Studio',
-                onPressed: () => context.push('/profile/edit'),
+                onPressed: () => context.push('/company-profile/edit'),
               ),
               const SizedBox(width: 8),
               _actionButton(

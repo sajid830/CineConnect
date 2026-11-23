@@ -243,6 +243,9 @@ class MockCollaborationRepository implements CollaborationRepository {
 }
 
 final collaborationRepositoryProvider = Provider<CollaborationRepository>((ref) {
-  return RemoteCollaborationRepository();
+  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: true);
+  return useMock
+      ? MockCollaborationRepository(ref.watch(talentRepositoryProvider))
+      : RemoteCollaborationRepository();
 });
 

@@ -223,6 +223,10 @@ class MockChatRepository implements ChatRepository {
 }
 
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {
+  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: true);
+  if (useMock) {
+    return MockChatRepository();
+  }
   final chatService = ref.watch(chatServiceProvider);
   final colRepo = ref.watch(collaborationRepositoryProvider);
   final repo = RemoteChatRepository(

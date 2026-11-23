@@ -293,15 +293,17 @@ class _AuthGateState extends State<AuthGate> {
 
   void _handleProfileFetchFallback(Session session, String errorDetails) {
     debugPrint('AuthGate profile fetch error: $errorDetails');
-    // STRICT SECURITY: Both account types require a successful backend profile response.
-    // Neither Talent nor Production House portal is selected using Supabase metadata on failure.
+    final fallbackRole = resolveUserAuthRole(session.user.userMetadata);
     setState(() {
       _resolvedUserId = session.user.id;
-      _authoritativeRole = null;
-      _rawBackendRole = null;
+      _authoritativeRole =
+          fallbackRole != AuthRole.unrecognized ? fallbackRole : null;
+      _rawBackendRole = session.user.userMetadata?['account_type'] as String? ??
+          session.user.userMetadata?['role'] as String?;
       _isLoadingProfile = false;
-      _profileError =
-          'Unable to verify account credentials with the server. Please check your connection and try again.';
+      _profileError = fallbackRole != AuthRole.unrecognized
+          ? null
+          : 'Unable to verify account credentials with the server. Please check your connection and try again.';
     });
   }
 

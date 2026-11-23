@@ -96,6 +96,10 @@ class MockMediaRepository implements MediaRepository {
 }
 
 final mediaRepositoryProvider = Provider<MediaRepository>((ref) {
+  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: true);
+  if (useMock) {
+    return MockMediaRepository();
+  }
   final uploadService = ref.watch(mediaUploadServiceProvider);
   return RemoteMediaRepository(uploadService: uploadService);
 });
