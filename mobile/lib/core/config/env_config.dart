@@ -34,16 +34,57 @@ class EnvConfig {
 
   /// Whether valid Supabase configuration has been provided via compile-time variables.
   bool get isSupabaseConfigured =>
-      supabaseUrl.isNotEmpty && supabasePublishableKey.isNotEmpty;
+      _isValidSupabaseUrl(supabaseUrl) && _isValidPublishableKey(supabasePublishableKey);
 
   /// Returns missing Supabase configuration keys without exposing credentials.
   List<String> get missingSupabaseVariables {
     final missing = <String>[];
-    if (supabaseUrl.isEmpty) missing.add('SUPABASE_URL');
-    if (supabasePublishableKey.isEmpty) {
-      missing.add('SUPABASE_PUBLISHABLE_KEY');
+    if (!_isValidSupabaseUrl(supabaseUrl)) {
+      missing.add(
+        supabaseUrl.isEmpty
+            ? 'SUPABASE_URL'
+            : 'SUPABASE_URL (placeholder detected: supply valid https://<project>.supabase.co)',
+      );
+    }
+    if (!_isValidPublishableKey(supabasePublishableKey)) {
+      missing.add(
+        supabasePublishableKey.isEmpty
+            ? 'SUPABASE_PUBLISHABLE_KEY'
+            : 'SUPABASE_PUBLISHABLE_KEY (placeholder detected: supply valid sb_publishable_... or anon key)',
+      );
     }
     return missing;
+  }
+
+  /// Validates that a Supabase URL is well-formed and not an unresolved placeholder.
+  static bool _isValidSupabaseUrl(String url) {
+    if (url.isEmpty) return false;
+    final trimmed = url.trim().toLowerCase();
+    if (!trimmed.startsWith('https://')) return false;
+    if (trimmed.contains('your-project') || trimmed.contains('<your-project>')) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Validates that a client-side publishable key is not a placeholder or secret key.
+  static bool _isValidPublishableKey(String key) {
+    if (key.isEmpty) return false;
+    final trimmed = key.trim();
+    final lower = trimmed.toLowerCase();
+    if (lower.contains('your-') ||
+        lower.contains('your_') ||
+        lower.contains('<your') ||
+        lower.contains('placeholder') ||
+        lower.contains('change_me')) {
+      return false;
+    }
+    // Block accidental inclusion of secret or service-role keys in frontend
+    if (lower.contains('service_role') || trimmed.startsWith('sb_secret_')) {
+      return false;
+    }
+    // Accept modern publishable format (sb_publishable_...) or standard JWT format (eyJ...)
+    return trimmed.startsWith('sb_publishable_') || trimmed.startsWith('eyJ');
   }
 
   /// Canonical mobile deep-link scheme and host for Supabase authentication callbacks.
