@@ -1213,9 +1213,10 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
                 return;
               }
 
+              final pickedFile = file;
               setDialogState(() {
-                selectedFile = file;
-                selectedFileName = file!.name;
+                selectedFile = pickedFile;
+                selectedFileName = pickedFile.name;
                 selectedFileSize = length;
                 selectedMimeType = mime;
                 uploadError = null;
