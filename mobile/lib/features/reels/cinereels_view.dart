@@ -26,7 +26,9 @@ class _CineReelsViewState extends State<CineReelsView> with SingleTickerProvider
     super.initState();
     _pageController = PageController();
     _pageController.addListener(_onScroll);
-    widget.appState.loadReels();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.appState.loadReels();
+    });
   }
 
   void _onScroll() {

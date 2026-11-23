@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/craft_models.dart';
 import '../network/api_client.dart';
@@ -98,6 +99,7 @@ class CineAppState extends ChangeNotifier {
 
   CineAppState({TalentApiService? apiService, bool autoCheckConnectivity = true})
       : _apiService = apiService ?? TalentApiService() {
+    myProfile = _buildFallbackTalentProfile();
     if (autoCheckConnectivity) {
       _initConnectivityCheck();
       loadOpportunities();
@@ -115,6 +117,18 @@ class CineAppState extends ChangeNotifier {
   Future<void> _initConnectivityCheck() async {
     _isBackendConnected = await _apiService.checkBackendHealth();
     notifyListeners();
+  }
+
+  @override
+  void notifyListeners() {
+    if (WidgetsBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        super.notifyListeners();
+      });
+    } else {
+      super.notifyListeners();
+    }
   }
 
   // ==========================================

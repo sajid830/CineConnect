@@ -253,5 +253,8 @@ class RemoteApplicationRepository implements ApplicationRepository {
 }
 
 final applicationRepositoryProvider = Provider<ApplicationRepository>((ref) {
-  return RemoteApplicationRepository();
+  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: true);
+  return useMock
+      ? MockApplicationRepository(ref.watch(talentRepositoryProvider))
+      : RemoteApplicationRepository();
 });

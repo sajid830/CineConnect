@@ -355,7 +355,7 @@ class _ApplicationDetailScreenState
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(
-                      onPressed: () => context.push('/talent/${t.id}'),
+                      onPressed: () => context.push('/talent-profile/${t.id}'),
                       icon: const Icon(Icons.person_outline, size: 18),
                       label: const Text('View full profile'),
                     ),

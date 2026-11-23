@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 export '../core/theme/app_theme.dart' show CineColors, CineTheme;
 
@@ -77,6 +78,28 @@ class AppTheme {
       outlineVariant: AppColors.border,
     );
 
+    final baseTextTheme = GoogleFonts.interTextTheme(const TextTheme(
+      displayLarge: TextStyle(
+          color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+      displayMedium: TextStyle(
+          color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+      headlineLarge: TextStyle(
+          color: AppColors.textPrimary, fontWeight: FontWeight.w700),
+      headlineMedium: TextStyle(
+          color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+      titleLarge: TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 18,
+          fontWeight: FontWeight.w600),
+      titleMedium: TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 16,
+          fontWeight: FontWeight.w500),
+      bodyLarge: TextStyle(color: AppColors.textPrimary, fontSize: 16),
+      bodyMedium: TextStyle(color: AppColors.textPrimary, fontSize: 14),
+      bodySmall: TextStyle(color: AppColors.textMuted, fontSize: 12),
+    ));
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
@@ -84,12 +107,13 @@ class AppTheme {
       scaffoldBackgroundColor: AppColors.background,
       canvasColor: AppColors.background,
       dividerColor: AppColors.border,
-      appBarTheme: const AppBarTheme(
+      textTheme: baseTextTheme,
+      appBarTheme: AppBarTheme(
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: TextStyle(
+        titleTextStyle: GoogleFonts.inter(
           color: AppColors.textPrimary,
           fontSize: 20,
           fontWeight: FontWeight.w700,
@@ -183,27 +207,6 @@ class AppTheme {
             fontWeight: FontWeight.w600,
           ),
         ),
-      ),
-      textTheme: const TextTheme(
-        displayLarge: TextStyle(
-            color: AppColors.textPrimary, fontWeight: FontWeight.bold),
-        displayMedium: TextStyle(
-            color: AppColors.textPrimary, fontWeight: FontWeight.bold),
-        headlineLarge: TextStyle(
-            color: AppColors.textPrimary, fontWeight: FontWeight.w700),
-        headlineMedium: TextStyle(
-            color: AppColors.textPrimary, fontWeight: FontWeight.w600),
-        titleLarge: TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 18,
-            fontWeight: FontWeight.w600),
-        titleMedium: TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 16,
-            fontWeight: FontWeight.w500),
-        bodyLarge: TextStyle(color: AppColors.textPrimary, fontSize: 16),
-        bodyMedium: TextStyle(color: AppColors.textMuted, fontSize: 14),
-        bodySmall: TextStyle(color: AppColors.textMuted, fontSize: 12),
       ),
       dividerTheme: const DividerThemeData(
         color: AppColors.border,

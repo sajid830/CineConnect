@@ -194,5 +194,6 @@ class RemoteProjectRepository implements ProjectRepository {
 }
 
 final projectRepositoryProvider = Provider<ProjectRepository>((ref) {
-  return RemoteProjectRepository();
+  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: true);
+  return useMock ? MockProjectRepository() : RemoteProjectRepository();
 });

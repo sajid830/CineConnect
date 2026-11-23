@@ -130,5 +130,6 @@ class MockNotificationRepository implements NotificationRepository {
 }
 
 final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
-  return RemoteNotificationRepository();
+  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: true);
+  return useMock ? MockNotificationRepository() : RemoteNotificationRepository();
 });

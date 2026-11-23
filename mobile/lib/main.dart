@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -10,9 +11,48 @@ import 'core/utils/web_tab_sync.dart';
 export 'app/app.dart' show CineConnectApp;
 export 'app/theme.dart' show AppColors, AppTheme;
 
+/// Global ProviderObserver for diagnosing Riverpod provider state changes and errors
+class _AppProviderObserver extends ProviderObserver {
+  @override
+  void providerDidFail(
+    ProviderBase<Object?> provider,
+    Object error,
+    StackTrace stackTrace,
+    ProviderContainer container,
+  ) {
+    debugPrint(
+        '[Riverpod Error] ${provider.name ?? provider.runtimeType}: $error\n$stackTrace');
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initPasswordRecoveryState();
+
+  // Custom release-mode error widget replacing the default grey error box
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Material(
+      color: const Color(0xFF0D0D0D),
+      child: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              kReleaseMode
+                  ? 'Something went wrong. Please restart the app.'
+                  : details.exceptionAsString(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFFD4AF37),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  };
 
   final config = EnvConfig.fromEnvironment();
 
@@ -40,8 +80,9 @@ Future<void> main() async {
   }
 
   runApp(
-    const ProviderScope(
-      child: CineConnectApp(),
+    ProviderScope(
+      observers: [_AppProviderObserver()],
+      child: const CineConnectApp(),
     ),
   );
 }
