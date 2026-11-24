@@ -130,7 +130,7 @@ class CompanyProfileScreen extends ConsumerWidget {
       appBar: AppBar(
         centerTitle: true,
         title: Text(
-          profileAsync.value?.companyName ?? 'Studio profile',
+          profileAsync.valueOrNull?.companyName ?? 'Studio profile',
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
@@ -329,10 +329,10 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
   }
 
   Widget _statsCard(CompanyProfile p) {
-    final projects = ref.watch(projectsProvider).value;
+    final projects = ref.watch(projectsProvider).valueOrNull;
     final openRoles = ref
         .watch(opportunitiesProvider)
-        .value
+        .valueOrNull
         ?.where((o) => o.status == OpportunityStatus.open)
         .length;
 

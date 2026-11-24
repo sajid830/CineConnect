@@ -38,9 +38,13 @@ class RemoteDashboardRepository implements DashboardRepository {
               .map(JobApplication.fromJson)
               .toList();
         } else {
-          final allApps = await _applications.getApplications();
-          recent = List.of(allApps)..sort((a, b) => b.appliedAt.compareTo(a.appliedAt));
-          recent = recent.take(3).toList();
+          try {
+            final allApps = await _applications.getApplications();
+            recent = List.of(allApps)..sort((a, b) => b.appliedAt.compareTo(a.appliedAt));
+            recent = recent.take(3).toList();
+          } catch (_) {
+            recent = [];
+          }
         }
 
         return DashboardSummary(
@@ -55,14 +59,21 @@ class RemoteDashboardRepository implements DashboardRepository {
       // Fall through to fallback
     }
 
-    final allApps = await _applications.getApplications();
-    final recent = List.of(allApps)..sort((a, b) => b.appliedAt.compareTo(a.appliedAt));
+    List<JobApplication> recent = [];
+    try {
+      final allApps = await _applications.getApplications();
+      recent = List.of(allApps)..sort((a, b) => b.appliedAt.compareTo(a.appliedAt));
+      recent = recent.take(3).toList();
+    } catch (_) {
+      recent = [];
+    }
+
     return DashboardSummary(
       activeProjects: 0,
       openCastingCalls: 0,
       newApplications: 0,
       shortlisted: 0,
-      recentApplications: recent.take(3).toList(),
+      recentApplications: recent,
     );
   }
 }
@@ -99,7 +110,7 @@ class MockDashboardRepository implements DashboardRepository {
 }
 
 final dashboardRepositoryProvider = Provider<DashboardRepository>((ref) {
-  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: true);
+  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: false);
   if (useMock) {
     return MockDashboardRepository(
       ref.watch(projectRepositoryProvider),

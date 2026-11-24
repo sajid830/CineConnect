@@ -59,13 +59,13 @@ class OpportunityDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final opportunitiesAsync = ref.watch(opportunitiesProvider);
-    final item = opportunitiesAsync.value
+    final item = opportunitiesAsync.valueOrNull
         ?.where((o) => o.id == opportunityId)
         .firstOrNull;
-    final projects = ref.watch(projectsProvider).value ?? const <Project>[];
+    final projects = ref.watch(projectsProvider).valueOrNull ?? const <Project>[];
     final applicationCount = ref
         .watch(applicationsProvider)
-        .value
+        .valueOrNull
         ?.where((a) => a.opportunityId == opportunityId)
         .length;
 

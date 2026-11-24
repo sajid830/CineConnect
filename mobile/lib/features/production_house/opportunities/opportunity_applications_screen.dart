@@ -18,7 +18,7 @@ class OpportunityApplicationsScreen extends ConsumerWidget {
     final applicationsAsync = ref.watch(applicationsProvider);
     final opportunity = ref
         .watch(opportunitiesProvider)
-        .value
+        .valueOrNull
         ?.where((o) => o.id == opportunityId)
         .firstOrNull;
     final title = opportunity?.title ?? 'Casting call';

@@ -135,6 +135,6 @@ class MockPortfolioRepository implements PortfolioRepository {
 }
 
 final portfolioRepositoryProvider = Provider<PortfolioRepository>((ref) {
-  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: true);
+  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: false);
   return useMock ? MockPortfolioRepository() : RemotePortfolioRepository();
 });

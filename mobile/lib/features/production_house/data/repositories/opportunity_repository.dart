@@ -220,6 +220,6 @@ class RemoteOpportunityRepository implements OpportunityRepository {
 }
 
 final opportunityRepositoryProvider = Provider<OpportunityRepository>((ref) {
-  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: true);
+  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: false);
   return useMock ? MockOpportunityRepository() : RemoteOpportunityRepository();
 });

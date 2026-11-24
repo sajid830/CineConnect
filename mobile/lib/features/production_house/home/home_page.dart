@@ -21,7 +21,7 @@ class HomePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final summaryAsync = ref.watch(dashboardSummaryProvider);
-    final opportunities = ref.watch(opportunitiesProvider).value ?? const [];
+    final opportunities = ref.watch(opportunitiesProvider).valueOrNull ?? const [];
 
     String opportunityTitle(String id) =>
         opportunities.where((o) => o.id == id).map((o) => o.title).firstOrNull ??
