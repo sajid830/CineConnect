@@ -108,52 +108,16 @@ class CineAppHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          const Flexible(
-            child: Text(
-              'CineConnect',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-                color: CineColors.textPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(
-                color: CineColors.gold.withValues(alpha: 0.8),
-                width: 0.8,
-              ),
-            ),
-            child: const Text(
-              'TALENT',
-              style: TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w800,
-                color: CineColors.gold,
-                letterSpacing: 0.6,
-              ),
+          const Text(
+            'CineConnect',
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+              color: CineColors.textPrimary,
             ),
           ),
           const Spacer(),
-          _buildTopAction(
-            label: 'Search',
-            onTap: () => context.push('/search'),
-            icon: const Icon(
-              Icons.search_rounded,
-              color: CineColors.textPrimary,
-              size: 22,
-            ),
-            showBadge: false,
-          ),
-          const SizedBox(width: 2),
           _buildTopAction(
             label: 'Notifications',
             onTap: onOpenNotifications,
