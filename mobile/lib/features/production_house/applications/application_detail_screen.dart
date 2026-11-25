@@ -218,13 +218,9 @@ class _ApplicationDetailScreenState
           ),
           const SizedBox(height: 12),
           OutlinedButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Messaging arrives with the Chat module'),
-                ),
-              );
-            },
+            onPressed: () => context.push(
+              '/ph-chat?collaborationId=${a.talent.id}',
+            ),
             child: const Text('Contact candidate'),
           ),
           const SizedBox(height: 12),

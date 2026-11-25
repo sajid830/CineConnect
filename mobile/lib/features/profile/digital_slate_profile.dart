@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
@@ -6,7 +8,6 @@ import '../../core/state/app_state.dart';
 import '../../core/services/media_upload_service.dart';
 import '../production_house/data/models/portfolio_item.dart';
 import '../production_house/applications/audition_video_player_dialog.dart';
-import 'profile_settings_screen.dart';
 
 class DigitalSlateProfileView extends StatefulWidget {
   final CineAppState appState;
@@ -19,6 +20,232 @@ class DigitalSlateProfileView extends StatefulWidget {
 
 class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
   int _activeTab = 0;
+  File? _localAvatarFile;
+
+  void _showProfilePhotoPickerSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: CineColors.surfaceElevated,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: CineColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Change Profile Photo',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: CineColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined, color: CineColors.gold),
+                title: const Text('Take Photo', style: TextStyle(color: CineColors.textPrimary, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Capture with device camera', style: TextStyle(color: CineColors.textMuted, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickProfileAvatar(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined, color: CineColors.gold),
+                title: const Text('Choose from Gallery', style: TextStyle(color: CineColors.textPrimary, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Select photo from mobile device gallery', style: TextStyle(color: CineColors.textMuted, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickProfileAvatar(ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickProfileAvatar(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: source, imageQuality: 85);
+      if (picked == null) return;
+      if (!mounted) return;
+
+      setState(() {
+        _localAvatarFile = File(picked.path);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: CineColors.surfaceElevated,
+          content: Text('Updating profile photo...', style: TextStyle(color: CineColors.gold)),
+        ),
+      );
+
+      final mime = MediaUploadService.resolveMimeType(picked.name);
+      final uploadRes = await widget.appState.apiService.uploadPublicXFile(
+        file: picked,
+        contentType: mime,
+      );
+
+      await widget.appState.updateMyProfile({'avatar_url': uploadRes.publicUrl});
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: CineColors.surfaceElevated,
+            content: Text('Profile photo updated successfully!', style: TextStyle(color: CineColors.gold)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: CineColors.surfaceElevated,
+            content: Text('Could not upload photo: $e', style: const TextStyle(color: CineColors.error)),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showShareProfileSheet(TalentProfile talent) {
+    final profileUrl = 'https://cineconnect.app/@${talent.handle.replaceAll('@', '')}';
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: CineColors.surfaceElevated,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: CineColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Share Profile',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: CineColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: CineColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: CineColors.border),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: CineColors.gold,
+                      child: Text(
+                        talent.avatarUrl.length <= 3 ? talent.avatarUrl : 'SA',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(talent.fullName, style: const TextStyle(fontWeight: FontWeight.bold, color: CineColors.textPrimary, fontSize: 13)),
+                          Text(talent.handle, style: const TextStyle(color: CineColors.textMuted, fontSize: 11)),
+                          Text(profileUrl, style: const TextStyle(color: CineColors.gold, fontSize: 11), overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.link_rounded, color: CineColors.gold),
+                title: const Text('Copy Profile Link', style: TextStyle(color: CineColors.textPrimary, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Copy link to clipboard to share anywhere', style: TextStyle(color: CineColors.textMuted, fontSize: 11)),
+                onTap: () async {
+                  Navigator.pop(sCtx);
+                  await Clipboard.setData(ClipboardData(text: profileUrl));
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        backgroundColor: CineColors.surfaceElevated,
+                        content: Text('Profile link copied to clipboard!', style: TextStyle(color: CineColors.gold)),
+                      ),
+                    );
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.share_rounded, color: CineColors.gold),
+                title: const Text('Share via Apps / WhatsApp', style: TextStyle(color: CineColors.textPrimary, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Open device apps (WhatsApp, Instagram, etc.) to share', style: TextStyle(color: CineColors.textMuted, fontSize: 11)),
+                onTap: () async {
+                  Navigator.pop(sCtx);
+                  final shareText = 'Check out ${talent.fullName} (${talent.primaryCraft}) on CineConnect: $profileUrl';
+                  await _shareViaNativeApps(
+                    text: shareText,
+                    title: 'Share Profile via',
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static const MethodChannel _nativeShareChannel = MethodChannel('cineconnect/native_share');
+
+  Future<void> _shareViaNativeApps({required String text, String title = 'Share Profile'}) async {
+    try {
+      await _nativeShareChannel.invokeMethod('shareText', {
+        'text': text,
+        'title': title,
+      });
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: CineColors.surfaceElevated,
+            content: Text('Profile link copied to clipboard!', style: TextStyle(color: CineColors.gold)),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -84,81 +311,91 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Row(
               children: [
-                Flexible(
-                  child: Text(
-                    talent.handle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: CineColors.textPrimary,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                const Icon(Icons.verified, size: 15, color: CineColors.gold),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.add_box_outlined, color: CineColors.textPrimary),
-                  onPressed: () => _openCreatePostDialog(context),
-                ),
-                IconButton(
-                  tooltip: 'Settings',
-                  icon: const Icon(Icons.menu_rounded, color: CineColors.textPrimary),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ProfileSettingsScreen(appState: widget.appState),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Container(
-                  width: 86,
-                  height: 86,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const SweepGradient(
-                      colors: [
-                        CineColors.gold,
-                        CineColors.goldLight,
-                        Color(0xFFF59E0B),
-                        CineColors.gold,
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: CineColors.gold.withValues(alpha: 0.25),
-                        blurRadius: 16,
-                      ),
-                    ],
-                  ),
-                  padding: const EdgeInsets.all(3),
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: CineColors.surface,
-                    ),
-                    child: Center(
-                      child: Text(
-                        talent.avatarUrl,
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                          color: CineColors.gold,
+                GestureDetector(
+                  onTap: _showProfilePhotoPickerSheet,
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 86,
+                        height: 86,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const SweepGradient(
+                            colors: [
+                              CineColors.gold,
+                              CineColors.goldLight,
+                              Color(0xFFF59E0B),
+                              CineColors.gold,
+                            ],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: CineColors.gold.withValues(alpha: 0.25),
+                              blurRadius: 16,
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(3),
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: CineColors.surface,
+                          ),
+                          child: ClipOval(
+                            child: _localAvatarFile != null
+                                ? Image.file(_localAvatarFile!, fit: BoxFit.cover, width: 80, height: 80)
+                                : (talent.avatarUrl.startsWith('http')
+                                    ? Image.network(
+                                        talent.avatarUrl,
+                                        fit: BoxFit.cover,
+                                        width: 80,
+                                        height: 80,
+                                        errorBuilder: (_, __, ___) => Center(
+                                          child: Text(
+                                            talent.avatarUrl.length <= 3 ? talent.avatarUrl : 'SA',
+                                            style: const TextStyle(
+                                              fontSize: 26,
+                                              fontWeight: FontWeight.w900,
+                                              color: CineColors.gold,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : Center(
+                                        child: Text(
+                                          talent.avatarUrl,
+                                          style: const TextStyle(
+                                            fontSize: 26,
+                                            fontWeight: FontWeight.w900,
+                                            color: CineColors.gold,
+                                          ),
+                                        ),
+                                      )),
+                          ),
                         ),
                       ),
-                    ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          width: 26,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: CineColors.gold,
+                            border: Border.all(color: CineColors.surface, width: 2),
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt_rounded,
+                            size: 14,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -167,8 +404,8 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
                       _stat('$postsCount', 'posts'),
-                      _stat('${talent.connectionsCount}', 'connections'),
-                      _stat(talent.endorsementsCount != null ? '${talent.endorsementsCount}' : '—', 'endorsements'),
+                      _stat('${talent.connectionsCount}', 'followers'),
+                      _stat(talent.endorsementsCount != null ? '${talent.endorsementsCount}' : '0', 'following'),
                     ],
                   ),
                 ),
@@ -278,7 +515,7 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => _showInfo('Share profile'),
+                    onPressed: () => _showShareProfileSheet(talent),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: CineColors.border),
                       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -289,37 +526,10 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: CineColors.border),
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
-                    color: CineColors.textPrimary,
-                    onPressed: () => _showInfo('Discover people'),
-                  ),
-                ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 86,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              children: [
-                _highlight(Icons.movie_filter_outlined, 'Slate'),
-                _highlight(Icons.camera_rounded, 'Gear'),
-                _highlight(Icons.history_edu_rounded, 'Credits'),
-                _highlight(Icons.auto_awesome_rounded, 'BTS'),
-                _highlight(Icons.workspace_premium_outlined, 'Guild'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 14),
           Container(
             decoration: const BoxDecoration(
               border: Border(
@@ -331,8 +541,6 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
               children: [
                 _tab(Icons.grid_on_rounded, 0),
                 _tab(Icons.play_circle_outline_rounded, 1),
-                _tab(Icons.history_edu_rounded, 2),
-                _tab(Icons.dynamic_feed_rounded, 3),
               ],
             ),
           ),
@@ -359,36 +567,6 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
           style: const TextStyle(fontSize: 10.5, color: CineColors.textMuted),
         ),
       ],
-    );
-  }
-
-  Widget _highlight(IconData icon, String label) {
-    return GestureDetector(
-      onTap: () => _showHighlight(label),
-      child: SizedBox(
-        width: 74,
-        child: Column(
-          children: [
-            Container(
-              width: 58,
-              height: 58,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: CineColors.surfaceElevated,
-                border: Border.all(color: CineColors.border, width: 1.2),
-              ),
-              child: Icon(icon, color: CineColors.gold, size: 24),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10.5, color: CineColors.textPrimary),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -762,188 +940,6 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showHighlight(String label) {
-    final talent = widget.appState.myProfile ?? (widget.appState.talentNetwork.isNotEmpty ? widget.appState.talentNetwork.first : null);
-    if (talent == null) return;
-    List<String> items;
-    switch (label) {
-      case 'Gear':
-        items = talent.verifiedGear;
-        break;
-      case 'Credits':
-        final credits = widget.appState.myFilmography.isNotEmpty ? widget.appState.myFilmography : talent.filmography;
-        items = credits
-            .map((c) => '${c.filmTitle} (${c.releaseYear}) — ${c.craftRole}')
-            .toList();
-        break;
-      case 'Guild':
-        items = [
-          'Guild ID: ${talent.guildId.isNotEmpty ? talent.guildId : 'Not specified'}',
-          'Guild verified: ${talent.isGuildVerified ? 'Yes' : 'Pending'}',
-          'Connections: ${talent.connectionsCount}',
-          'Endorsements: ${talent.endorsementsCount != null ? talent.endorsementsCount.toString() : '—'}',
-        ];
-        break;
-      case 'Slate':
-        items = [
-          'Scene: 84A',
-          'Take: 03',
-          'Roll: A-01',
-          'FPS: 24.00',
-          'Shutter: 180°',
-          'Director: Karthik Subbaraj',
-        ];
-        break;
-      default:
-        items = [
-          'On-set wrap updates',
-          'Camera tests & lighting setups',
-          'Behind-the-scenes from recent shoots',
-        ];
-    }
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF13141B),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 30),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: CineColors.textPrimary,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.close, color: CineColors.textMuted),
-                  onPressed: () => Navigator.of(ctx).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            ...items.map(
-              (item) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    const Icon(Icons.check_circle, size: 14, color: CineColors.gold),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        item,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: CineColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _openCreatePostDialog(BuildContext context) {
-    final captionCtrl = TextEditingController();
-    final slateCtrl = TextEditingController(text: 'SCENE 1 / TAKE 1 [RAW]');
-    final tcCtrl = TextEditingController(text: 'TC 00:01:00:00');
-    final tagsCtrl = TextEditingController(text: 'Direction, Cinematography');
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF13141C),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: CineColors.gold, width: 1.2),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.movie_creation_outlined, color: CineColors.gold),
-            SizedBox(width: 8),
-            Text('Create Cinema Post', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: captionCtrl,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  hintText: 'Share production updates, wrap announcements, or technical breakdowns...',
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: slateCtrl,
-                decoration: const InputDecoration(labelText: 'Video Slate Title'),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: tcCtrl,
-                decoration: const InputDecoration(labelText: 'SMPTE Timecode'),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: tagsCtrl,
-                decoration: const InputDecoration(labelText: 'Craft Tags (comma-separated)'),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: CineColors.textMuted)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final caption = captionCtrl.text.trim();
-              if (caption.isEmpty) return;
-              Navigator.of(ctx).pop();
-              final talent = widget.appState.myProfile ?? widget.appState.talentNetwork.first;
-              final tags = tagsCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-              final post = CineFeedPost(
-                id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
-                authorName: talent.fullName,
-                authorCraft: talent.primaryCraft,
-                authorAvatar: talent.avatarUrl,
-                guildBadge: '${talent.guildId} • Verified',
-                timestamp: 'Just now',
-                contentText: caption,
-                videoSlateTitle: slateCtrl.text.trim(),
-                smpteTimecode: tcCtrl.text.trim(),
-                likes: 0,
-                comments: 0,
-                taggedCrafts: tags.isNotEmpty ? tags : [talent.primaryCraft],
-              );
-              widget.appState.addFeedPost(post);
-              _showInfo('Cinema post published to production feed!');
-            },
-            child: const Text('Post'),
-          ),
-        ],
       ),
     );
   }

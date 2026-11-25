@@ -223,7 +223,7 @@ class MockChatRepository implements ChatRepository {
 }
 
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {
-  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: true);
+  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: false);
   if (useMock) {
     return MockChatRepository();
   }

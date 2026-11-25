@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -111,7 +112,8 @@ class MediaUploadService {
       request.headers['Content-Type'] = contentType;
 
       // Pipe the stream to the request sink and initiate send concurrently
-      final pipeFuture = stream.pipe(request.sink);
+      // Cast ensures Stream<Uint8List> from image_picker / cross_file satisfies StreamConsumer<List<int>>
+      final pipeFuture = stream.cast<List<int>>().pipe(request.sink);
       final sendFuture = cleanClient.send(request);
 
       // Wait for both upload transmission and server response receipt

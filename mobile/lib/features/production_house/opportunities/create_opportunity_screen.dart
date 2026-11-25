@@ -37,7 +37,7 @@ class _CreateOpportunityScreenState
   void initState() {
     super.initState();
     if (_isEdit) {
-      final list = ref.read(opportunitiesProvider).value ?? const <Opportunity>[];
+      final list = ref.read(opportunitiesProvider).valueOrNull ?? const <Opportunity>[];
       _editing = list.where((o) => o.id == widget.opportunityId).firstOrNull;
       final o = _editing;
       if (o != null) {

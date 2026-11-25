@@ -10,10 +10,101 @@ class StoryStatusBar extends StatelessWidget {
 
   const StoryStatusBar({super.key, required this.state});
 
-  void _showAddStoryDialog(BuildContext context, CineAppState appState) {
+  void _showAddStoryDialog(
+    BuildContext context,
+    CineAppState appState, {
+    ImageSource? initialSource,
+    bool? initialIsVideo,
+  }) {
     showDialog(
       context: context,
-      builder: (ctx) => _PublishStoryDialog(appState: appState),
+      builder: (ctx) => _PublishStoryDialog(
+        appState: appState,
+        initialSource: initialSource,
+        initialIsVideo: initialIsVideo,
+      ),
+    );
+  }
+
+  void _showStoryOptionsSheet(
+    BuildContext context,
+    CineAppState appState,
+    bool hasExistingStory,
+    dynamic story,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: CineColors.surfaceElevated,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: CineColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Your Story',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: CineColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (hasExistingStory && story != null) ...[
+                ListTile(
+                  leading: const Icon(Icons.remove_red_eye_outlined, color: CineColors.gold),
+                  title: const Text('View Your Story', style: TextStyle(color: CineColors.textPrimary, fontWeight: FontWeight.w600)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    appState.openStory(story);
+                    showDialog(
+                      context: context,
+                      builder: (dCtx) => OnSetStoryViewerDialog(
+                        story: story,
+                        appState: appState,
+                        onClose: () {
+                          appState.closeStory();
+                          Navigator.of(dCtx).pop();
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ],
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined, color: CineColors.gold),
+                title: const Text('Camera', style: TextStyle(color: CineColors.textPrimary, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Take photo or record live video', style: TextStyle(color: CineColors.textMuted, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showAddStoryDialog(context, appState, initialSource: ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined, color: CineColors.gold),
+                title: const Text('Device Gallery', style: TextStyle(color: CineColors.textPrimary, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Choose photo or video from mobile device', style: TextStyle(color: CineColors.textMuted, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showAddStoryDialog(context, appState, initialSource: ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -33,8 +124,8 @@ class StoryStatusBar extends StatelessWidget {
 
           return GestureDetector(
             onTap: () {
-              if (isYou && isPlaceholder) {
-                _showAddStoryDialog(context, state);
+              if (isYou) {
+                _showStoryOptionsSheet(context, state, !isPlaceholder, isPlaceholder ? null : story);
               } else {
                 state.openStory(story);
                 showDialog(
@@ -99,7 +190,12 @@ class StoryStatusBar extends StatelessWidget {
                         bottom: 0,
                         right: 0,
                         child: GestureDetector(
-                          onTap: () => _showAddStoryDialog(context, state),
+                          onTap: () => _showStoryOptionsSheet(
+                            context,
+                            state,
+                            !isPlaceholder,
+                            isPlaceholder ? null : story,
+                          ),
                           child: Container(
                             width: 20,
                             height: 20,
@@ -140,8 +236,14 @@ class StoryStatusBar extends StatelessWidget {
 
 class _PublishStoryDialog extends StatefulWidget {
   final CineAppState appState;
+  final ImageSource? initialSource;
+  final bool? initialIsVideo;
 
-  const _PublishStoryDialog({required this.appState});
+  const _PublishStoryDialog({
+    required this.appState,
+    this.initialSource,
+    this.initialIsVideo,
+  });
 
   @override
   State<_PublishStoryDialog> createState() => _PublishStoryDialogState();
@@ -172,6 +274,13 @@ class _PublishStoryDialogState extends State<_PublishStoryDialog> {
     _craftController = TextEditingController(
       text: widget.appState.myProfile?.primaryCraft ?? 'Cinematographer (ISC)',
     );
+    if (widget.initialSource != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _pickMediaWithSource(widget.initialIsVideo ?? false, widget.initialSource!);
+        }
+      });
+    }
   }
 
   @override
@@ -182,12 +291,12 @@ class _PublishStoryDialogState extends State<_PublishStoryDialog> {
     super.dispose();
   }
 
-  Future<void> _pickMedia(bool isVideo) async {
+  Future<void> _pickMediaWithSource(bool isVideo, ImageSource source) async {
     if (_isUploading) return;
     try {
       final XFile? file = isVideo
-          ? await _picker.pickVideo(source: ImageSource.gallery)
-          : await _picker.pickImage(source: ImageSource.gallery, imageQuality: 92);
+          ? await _picker.pickVideo(source: source)
+          : await _picker.pickImage(source: source, imageQuality: 92);
 
       if (file == null) {
         // Picker cancelled -> preserve existing selection
@@ -238,11 +347,83 @@ class _PublishStoryDialogState extends State<_PublishStoryDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: CineColors.surfaceElevated,
-            content: Text('Could not access gallery: $e', style: const TextStyle(color: CineColors.error)),
+            content: Text(
+              source == ImageSource.camera
+                  ? 'Could not access camera: $e'
+                  : 'Could not access gallery: $e',
+              style: const TextStyle(color: CineColors.error),
+            ),
           ),
         );
       }
     }
+  }
+
+  void _showMediaPickerSheet(bool isVideo) {
+    if (_isUploading) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: CineColors.surfaceElevated,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: CineColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                isVideo ? 'Record or Select Video' : 'Capture or Select Photo',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: CineColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined, color: CineColors.gold),
+                title: Text(
+                  isVideo ? 'Camera (Record Video)' : 'Camera (Take Photo)',
+                  style: const TextStyle(color: CineColors.textPrimary, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text('Capture live on-set with device camera', style: TextStyle(color: CineColors.textMuted, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickMediaWithSource(isVideo, ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined, color: CineColors.gold),
+                title: Text(
+                  isVideo ? 'Device Gallery (Video)' : 'Device Gallery (Photo)',
+                  style: const TextStyle(color: CineColors.textPrimary, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text('Choose existing file from phone gallery', style: TextStyle(color: CineColors.textMuted, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickMediaWithSource(isVideo, ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickMedia(bool isVideo) async {
+    _showMediaPickerSheet(isVideo);
   }
 
   void _removeSelectedMedia() {

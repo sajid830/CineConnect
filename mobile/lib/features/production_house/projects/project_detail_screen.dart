@@ -57,7 +57,7 @@ class ProjectDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final projectsAsync = ref.watch(projectsProvider);
-    final project = projectsAsync.value
+    final project = projectsAsync.valueOrNull
         ?.where((x) => x.id == projectId)
         .firstOrNull;
 

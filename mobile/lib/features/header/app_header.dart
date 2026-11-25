@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:cineconnect/app/theme.dart';
 import '../../core/state/app_state.dart';
 
@@ -8,6 +7,8 @@ class CineAppHeader extends StatelessWidget {
   final VoidCallback onOpenNotifications;
   final VoidCallback onOpenChat;
   final VoidCallback? onBack;
+  final bool showActions;
+  final Widget? trailing;
 
   const CineAppHeader({
     super.key,
@@ -15,6 +16,8 @@ class CineAppHeader extends StatelessWidget {
     required this.onOpenNotifications,
     required this.onOpenChat,
     this.onBack,
+    this.showActions = true,
+    this.trailing,
   });
 
   Widget _buildTopAction({
@@ -108,73 +111,41 @@ class CineAppHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          const Flexible(
-            child: Text(
-              'CineConnect',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-                color: CineColors.textPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(
-                color: CineColors.gold.withValues(alpha: 0.8),
-                width: 0.8,
-              ),
-            ),
-            child: const Text(
-              'TALENT',
-              style: TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w800,
-                color: CineColors.gold,
-                letterSpacing: 0.6,
-              ),
+          const Text(
+            'CineConnect',
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+              color: CineColors.textPrimary,
             ),
           ),
           const Spacer(),
-          _buildTopAction(
-            label: 'Search',
-            onTap: () => context.push('/search'),
-            icon: const Icon(
-              Icons.search_rounded,
-              color: CineColors.textPrimary,
-              size: 22,
+          if (trailing != null)
+            trailing!
+          else if (showActions) ...[
+            _buildTopAction(
+              label: 'Notifications',
+              onTap: onOpenNotifications,
+              icon: const Icon(
+                Icons.notifications_none_rounded,
+                color: CineColors.textPrimary,
+                size: 22,
+              ),
+              showBadge: state.unreadNotificationsCount > 0,
             ),
-            showBadge: false,
-          ),
-          const SizedBox(width: 2),
-          _buildTopAction(
-            label: 'Notifications',
-            onTap: onOpenNotifications,
-            icon: const Icon(
-              Icons.notifications_none_rounded,
-              color: CineColors.textPrimary,
-              size: 22,
+            const SizedBox(width: 2),
+            _buildTopAction(
+              label: 'Chat',
+              onTap: onOpenChat,
+              icon: const Icon(
+                Icons.chat_bubble_outline_rounded,
+                color: CineColors.textPrimary,
+                size: 20,
+              ),
+              showBadge: state.unreadChatCount > 0,
             ),
-            showBadge: state.unreadNotificationsCount > 0,
-          ),
-          const SizedBox(width: 2),
-          _buildTopAction(
-            label: 'Chat',
-            onTap: onOpenChat,
-            icon: const Icon(
-              Icons.chat_bubble_outline_rounded,
-              color: CineColors.textPrimary,
-              size: 20,
-            ),
-            showBadge: state.unreadChatCount > 0,
-          ),
+          ],
         ],
       ),
     );

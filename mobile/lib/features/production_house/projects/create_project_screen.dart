@@ -32,7 +32,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
   void initState() {
     super.initState();
     if (_isEdit) {
-      final list = ref.read(projectsProvider).value ?? const <Project>[];
+      final list = ref.read(projectsProvider).valueOrNull ?? const <Project>[];
       _editing = list.where((p) => p.id == widget.projectId).firstOrNull;
       final p = _editing;
       if (p != null) {
