@@ -664,12 +664,13 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                           icon: Icons.link_rounded,
                           label: 'Copy Link',
                           onTap: () async {
+                            final messenger = ScaffoldMessenger.of(context);
                             Navigator.pop(sCtx);
                             await Clipboard.setData(
                               ClipboardData(text: 'https://cineconnect.app/post/${post.id}'),
                             );
                             if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              messenger.showSnackBar(
                                 const SnackBar(
                                   backgroundColor: CineColors.surfaceElevated,
                                   content: Text(
@@ -701,6 +702,7 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                           icon: Icons.share_rounded,
                           label: 'Share via...',
                           onTap: () async {
+                            final messenger = ScaffoldMessenger.of(context);
                             Navigator.pop(sCtx);
                             await Clipboard.setData(
                               ClipboardData(
@@ -708,7 +710,7 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
                               ),
                             );
                             if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              messenger.showSnackBar(
                                 const SnackBar(
                                   backgroundColor: CineColors.surfaceElevated,
                                   content: Text(
@@ -755,92 +757,6 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
             Text(label, style: const TextStyle(fontSize: 11, color: CineColors.textPrimary)),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showTimecodeCritiqueDialog(CineFeedPost post) {
-    final tcController = TextEditingController(text: post.smpteTimecode);
-    final noteController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF14151C),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: CineColors.gold, width: 1.2),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.timer_outlined, color: CineColors.gold, size: 20),
-            SizedBox(width: 8),
-            Text('Pin SMPTE Timecode Critique',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Post: ${post.authorName} • ${post.videoSlateTitle}',
-                style:
-                    const TextStyle(fontSize: 12, color: CineColors.textMuted)),
-            const SizedBox(height: 12),
-            const Text('Frame-Accurate Timecode (SMPTE 24fps):',
-                style: TextStyle(fontSize: 11.5, color: CineColors.gold)),
-            const SizedBox(height: 4),
-            TextField(
-              controller: tcController,
-              style: const TextStyle(
-                  fontFamily: 'monospace', fontWeight: FontWeight.bold),
-              decoration: const InputDecoration(
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text('Technical / Creative Critique Note:',
-                style: TextStyle(fontSize: 11.5, color: CineColors.textMuted)),
-            const SizedBox(height: 4),
-            TextField(
-              controller: noteController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText:
-                    'e.g. Masterful shadow density at T2.0; subtle blue flare roll-off.',
-                contentPadding: EdgeInsets.all(12),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel',
-                style: TextStyle(color: CineColors.textMuted)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              final note = noteController.text.trim();
-              final tc = tcController.text.trim();
-              if (note.isNotEmpty) {
-                widget.appState.addCommentToPost(post.id, note, timecode: tc);
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  backgroundColor: CineColors.surfaceElevated,
-                  content: Text(
-                    'Timecode critique pinned at $tc on 24fps Master Ledger!',
-                    style: const TextStyle(color: CineColors.gold),
-                  ),
-                ),
-              );
-            },
-            child: const Text('Pin to Master Ledger'),
-          ),
-        ],
       ),
     );
   }

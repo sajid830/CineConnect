@@ -8,6 +8,7 @@ import '../../jobs/naukri_casting_board.dart';
 import '../../reels/cinereels_view.dart';
 import '../../radar/talent_network_radar.dart';
 import '../../profile/digital_slate_profile.dart';
+import '../../profile/profile_settings_screen.dart';
 import '../../notifications/notifications_sheet.dart';
 import '../../chat/chat_sheet.dart';
 import '../../create/create_action_sheet.dart';
@@ -94,6 +95,24 @@ class _TalentPortalScreenState extends State<TalentPortalScreen> {
                   state: _appState,
                   onOpenNotifications: _openNotifications,
                   onOpenChat: _openChat,
+                  showActions: _currentIndex != 4,
+                  trailing: _currentIndex == 4
+                      ? IconButton(
+                          tooltip: 'Settings',
+                          icon: const Icon(
+                            Icons.settings_outlined,
+                            color: CineColors.textPrimary,
+                            size: 22,
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ProfileSettingsScreen(appState: _appState),
+                              ),
+                            );
+                          },
+                        )
+                      : null,
                 ),
                 // 5-Tab Cinema Body
                 Expanded(
