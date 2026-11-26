@@ -125,17 +125,16 @@ async def create_reel(
 
 @router.get("/", response_model=List[ReelResponse])
 async def list_reels(
+    user_id: Optional[uuid.UUID] = Query(None, description="Filter reels by user ID"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     """Browse public CineReels vertical feed (newest first)."""
-    stmt = (
-        select(Reel)
-        .order_by(Reel.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-    )
+    stmt = select(Reel).order_by(Reel.created_at.desc())
+    if user_id:
+        stmt = stmt.where(Reel.user_id == user_id)
+    stmt = stmt.offset(skip).limit(limit)
     result = await db.execute(stmt)
     reels = result.scalars().all()
     return [_format_reel_response(r) for r in reels]

@@ -42,5 +42,8 @@ class OpportunityResponse(OpportunityBase):
     id: UUID
     project_id: UUID
     production_house_id: UUID
+    studio_name: Optional[str] = None
+    studio_banner_logo: Optional[str] = None
+    project_title: Optional[str] = None
     created_at: datetime
     updated_at: datetime

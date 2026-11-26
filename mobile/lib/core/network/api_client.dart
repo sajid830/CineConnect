@@ -137,6 +137,7 @@ class ApiClient {
     final headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
     };
     final token = _resolveAuthToken();
     if (token != null && token.isNotEmpty) {
@@ -265,18 +266,46 @@ class ApiClient {
       }
     }
 
+    String? detailMsg;
+    if (jsonBody is Map) {
+      final d = jsonBody['detail'] ?? jsonBody['message'];
+      if (d != null && d.toString().trim().isNotEmpty) {
+        detailMsg = d.toString().trim();
+      }
+    }
+
     if (statusCode >= 200 && statusCode < 300) {
       return jsonBody;
     } else if (statusCode == 401) {
-      throw ApiException(statusCode: 401, message: 'Authentication required or token expired.', details: jsonBody);
+      throw ApiException(
+        statusCode: 401,
+        message: detailMsg ?? 'Authentication required or token expired.',
+        details: jsonBody,
+      );
     } else if (statusCode == 403) {
-      throw ApiException(statusCode: 403, message: 'Access forbidden. Talent permissions required.', details: jsonBody);
+      throw ApiException(
+        statusCode: 403,
+        message: detailMsg ?? 'Access forbidden: You do not have permission for this action.',
+        details: jsonBody,
+      );
     } else if (statusCode == 404) {
-      throw ApiException(statusCode: 404, message: 'Requested resource not found.', details: jsonBody);
+      throw ApiException(
+        statusCode: 404,
+        message: detailMsg ?? 'Requested resource not found.',
+        details: jsonBody,
+      );
     } else if (statusCode == 422) {
-      throw ApiException(statusCode: 422, message: 'Validation error from API.', details: jsonBody);
+      throw ApiException(
+        statusCode: 422,
+        message: detailMsg ?? 'Validation error from API.',
+        details: jsonBody,
+      );
     } else {
-      throw ApiException(statusCode: statusCode, message: 'HTTP Error $statusCode', details: jsonBody);
+      throw ApiException(
+        statusCode: statusCode,
+        message: detailMsg ?? 'HTTP Error $statusCode',
+        details: jsonBody,
+      );
     }
   }
 }

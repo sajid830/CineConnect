@@ -70,37 +70,42 @@ class _ChatSheetState extends State<ChatSheet> {
           )
         : null;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.92,
-      decoration: const BoxDecoration(
-        color: CineColors.surface,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(22),
-          topRight: Radius.circular(22),
+    final viewInsets = MediaQuery.of(context).viewInsets;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: viewInsets.bottom),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.92,
+        decoration: const BoxDecoration(
+          color: CineColors.surface,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(22),
+            topRight: Radius.circular(22),
+          ),
+          border: Border(
+            top: BorderSide(color: CineColors.border, width: 1.5),
+          ),
         ),
-        border: Border(
-          top: BorderSide(color: CineColors.border, width: 1.5),
-        ),
-      ),
-      child: Column(
-        children: [
-          Container(
-            margin: const EdgeInsets.only(top: 10, bottom: 4),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: CineColors.border,
-              borderRadius: BorderRadius.circular(2),
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 4),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: CineColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          _buildHeader(activeThread),
-          const Divider(height: 1, color: CineColors.border),
-          Expanded(
-            child: _selectedThreadId == null
-                ? _buildInbox()
-                : _buildConversationView(activeThread!),
-          ),
-        ],
+            _buildHeader(activeThread),
+            const Divider(height: 1, color: CineColors.border),
+            Expanded(
+              child: _selectedThreadId == null
+                  ? _buildInbox()
+                  : _buildConversationView(activeThread!),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -554,53 +559,48 @@ class _ChatSheetState extends State<ChatSheet> {
             },
           ),
         ),
-        Container(
-          padding: const EdgeInsets.fromLTRB(8, 8, 10, 10),
-          decoration: const BoxDecoration(
-            color: Color(0xFF131418),
-            border: Border(top: BorderSide(color: CineColors.border)),
-          ),
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.camera_alt_outlined, color: CineColors.gold, size: 23),
-                onPressed: () => _showComingSoon('Camera'),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: _messageController,
-                  style: const TextStyle(color: CineColors.textPrimary, fontSize: 13),
-                  decoration: InputDecoration(
-                    hintText: 'Message...',
-                    hintStyle: const TextStyle(color: CineColors.textMuted, fontSize: 13),
-                    filled: true,
-                    fillColor: CineColors.surface,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(22),
-                      borderSide: BorderSide.none,
+        SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+            decoration: const BoxDecoration(
+              color: CineColors.surface,
+              border: Border(top: BorderSide(color: CineColors.border)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: CineColors.surfaceElevated,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: CineColors.gold, width: 1.5),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: TextField(
+                      controller: _messageController,
+                      minLines: 1,
+                      maxLines: 4,
+                      textCapitalization: TextCapitalization.sentences,
+                      style: const TextStyle(color: CineColors.textPrimary, fontSize: 14),
+                      decoration: const InputDecoration(
+                        hintText: 'Type a message',
+                        hintStyle: TextStyle(color: CineColors.textMuted, fontSize: 14),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onSubmitted: (_) => _sendMessage(thread.id),
                     ),
                   ),
-                  onSubmitted: (_) => _sendMessage(thread.id),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.emoji_emotions_outlined, color: CineColors.textMuted),
-                onPressed: () => _showComingSoon('Emoji picker'),
-              ),
-              GestureDetector(
-                onTap: () => _sendMessage(thread.id),
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: CineColors.gold,
-                  ),
-                  child: const Icon(Icons.send_rounded, color: Colors.black, size: 18),
+                const SizedBox(width: 6),
+                IconButton(
+                  icon: const Icon(Icons.send, color: CineColors.gold, size: 22),
+                  onPressed: () => _sendMessage(thread.id),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],

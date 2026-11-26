@@ -25,7 +25,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'Talent',
   ];
 
-  void _openTab(int index) => setState(() => _selectedIndex = index);
+  void _openTab(int index) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    setState(() => _selectedIndex = index);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ScaffoldMessenger.of(context).clearSnackBars();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cineconnect/app/theme.dart';
+import 'package:cineconnect/core/network/api_client.dart';
 import 'package:cineconnect/core/services/chat_service.dart';
 import 'package:cineconnect/features/production_house/data/models/chat_message.dart';
 import 'package:cineconnect/features/production_house/data/repositories/chat_repository.dart';
@@ -59,6 +60,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _load() async {
+    if (widget.collaborationId.isEmpty || widget.collaborationId == 'general') {
+      setState(() {
+        _loading = false;
+        _messages = [];
+        _error = false;
+      });
+      return;
+    }
     setState(() {
       _loading = true;
       _error = false;
@@ -100,8 +109,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } catch (e) {
       if (mounted) {
         _inputController.text = text;
+        final errorMsg = (e is ApiException && e.message.isNotEmpty)
+            ? e.message
+            : 'Message not sent. Try again.';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Message not sent. Try again.')),
+          SnackBar(content: Text(errorMsg)),
         );
       }
     } finally {

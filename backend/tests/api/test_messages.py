@@ -21,6 +21,39 @@ async def ensure_two_users(client: AsyncClient, h1: dict, h2: dict) -> tuple[UUI
     return UUID(res1.json()["id"]), UUID(res2.json()["id"])
 
 
+async def setup_accepted_collaboration(
+    client: AsyncClient,
+    talent_headers: dict,
+    ph_headers: dict,
+) -> tuple[UUID, UUID, UUID]:
+    """Sets up a PH, a project, invites talent, and talent accepts."""
+    await client.post("/api/v1/production-houses", headers=ph_headers, json={"company_name": "Test Studio"})
+    proj_res = await client.post("/api/v1/projects", headers=ph_headers, json={"title": "Test Production"})
+    proj_id = proj_res.json()["id"]
+
+    t_res = await client.get("/api/v1/users/me", headers=talent_headers)
+    t_id = UUID(t_res.json()["id"])
+    ph_res = await client.get("/api/v1/users/me", headers=ph_headers)
+    ph_id = UUID(ph_res.json()["id"])
+
+    # PH invites Talent
+    collab_res = await client.post(
+        "/api/v1/collaborations/",
+        headers=ph_headers,
+        json={"project_id": proj_id, "talent_id": str(t_id), "role": "Lead Actor"},
+    )
+    collab_id = collab_res.json()["id"]
+
+    # Talent accepts invitation
+    accept_res = await client.patch(
+        f"/api/v1/collaborations/{collab_id}/accept",
+        headers=talent_headers,
+    )
+    assert accept_res.status_code == 200
+
+    return t_id, ph_id, UUID(collab_id)
+
+
 # ==============================================================================
 # Authentication & Validation Matrix
 # ==============================================================================
@@ -82,6 +115,98 @@ async def test_message_nonexistent_recipient_rejected(
     assert "Recipient user not found" in response.json().get("detail", "")
 
 
+@pytest.mark.asyncio
+async def test_message_without_accepted_collaboration_rejected(
+    async_client: AsyncClient,
+    talent_headers: dict,
+    ph_headers: dict,
+):
+    """Verifies that messaging without an accepted collaboration is forbidden (403)."""
+    _, ph_id = await ensure_two_users(async_client, talent_headers, ph_headers)
+    payload = {"recipient_id": str(ph_id), "body": "Unauthorized direct message"}
+    res = await async_client.post("/api/v1/messages/", headers=talent_headers, json=payload)
+    assert res.status_code == 403
+    assert "accepted collaboration" in res.json().get("detail", "")
+
+
+@pytest.mark.asyncio
+async def test_message_with_only_invited_collaboration_rejected(
+    async_client: AsyncClient,
+    talent_headers: dict,
+    ph_headers: dict,
+):
+    """Verifies that messaging when collaboration is still 'invited' (not yet accepted) is forbidden (403)."""
+    await async_client.post("/api/v1/production-houses", headers=ph_headers, json={"company_name": "Invite Studio"})
+    proj_res = await async_client.post("/api/v1/projects", headers=ph_headers, json={"title": "Invite Project"})
+    proj_id = proj_res.json()["id"]
+
+    t_res = await async_client.get("/api/v1/users/me", headers=talent_headers)
+    t_id = t_res.json()["id"]
+
+    # PH sends invite to Talent (status is 'invited')
+    await async_client.post(
+        "/api/v1/collaborations/",
+        headers=ph_headers,
+        json={"project_id": proj_id, "talent_id": t_id, "role": "Actor"},
+    )
+
+    ph_res = await async_client.get("/api/v1/users/me", headers=ph_headers)
+    ph_id = ph_res.json()["id"]
+
+    # Talent tries to message PH before accepting -> 403 Forbidden
+    res = await async_client.post(
+        "/api/v1/messages/",
+        headers=talent_headers,
+        json={"recipient_id": ph_id, "body": "Premature message"},
+    )
+    assert res.status_code == 403
+    assert "accepted collaboration" in res.json().get("detail", "")
+
+
+@pytest.mark.asyncio
+async def test_duplicate_message_prevention_idempotency(
+    async_client: AsyncClient,
+    talent_headers: dict,
+    ph_headers: dict,
+):
+    """Verifies that repeated submissions with same client_message_id return the existing record without duplicates."""
+    t_id, ph_id, _ = await setup_accepted_collaboration(async_client, talent_headers, ph_headers)
+
+    client_id = f"test-client-{uuid.uuid4()}"
+    payload = {
+        "recipient_id": str(ph_id),
+        "body": "First submission body",
+        "client_message_id": client_id,
+    }
+
+    # 1. First submission -> 201 Created
+    res1 = await async_client.post("/api/v1/messages/", headers=talent_headers, json=payload)
+    assert res1.status_code == 201
+    data1 = res1.json()
+    assert data1["client_message_id"] == client_id
+    msg_id = data1["id"]
+
+    # 2. Resubmission with same client_message_id -> returns same message record
+    res2 = await async_client.post("/api/v1/messages/", headers=talent_headers, json=payload)
+    assert res2.status_code in (200, 201)
+    data2 = res2.json()
+    assert data2["id"] == msg_id
+    assert data2["client_message_id"] == client_id
+
+    # 3. Legitimate second message with identical text but different client_message_id -> creates second distinct message
+    client_id_2 = f"test-client-{uuid.uuid4()}"
+    payload2 = {
+        "recipient_id": str(ph_id),
+        "body": "First submission body",  # identical text
+        "client_message_id": client_id_2,
+    }
+    res3 = await async_client.post("/api/v1/messages/", headers=talent_headers, json=payload2)
+    assert res3.status_code == 201
+    data3 = res3.json()
+    assert data3["id"] != msg_id
+    assert data3["client_message_id"] == client_id_2
+
+
 # ==============================================================================
 # Messaging Lifecycle, Threads & Read Status Persistence
 # ==============================================================================
@@ -94,7 +219,7 @@ async def test_send_message_and_verify_persistence(
     ph_headers: dict,
 ):
     """Verifies sending message, DB persistence of sender_id, recipient_id, body, and sent_at."""
-    sender_id, recipient_id = await ensure_two_users(async_client, talent_headers, ph_headers)
+    sender_id, recipient_id, collab_id = await setup_accepted_collaboration(async_client, talent_headers, ph_headers)
 
     payload = {
         "recipient_id": str(recipient_id),
@@ -122,7 +247,7 @@ async def test_send_message_and_verify_persistence(
     assert db_msg.body == payload["body"]
     assert db_msg.is_read is False
     assert db_msg.sent_at is not None
-    assert db_msg.collaboration_id is None
+    assert db_msg.collaboration_id == collab_id
 
 
 @pytest.mark.asyncio
@@ -133,7 +258,7 @@ async def test_conversation_thread_and_automatic_mark_as_read(
     ph_headers: dict,
 ):
     """Verifies conversation thread retrieval and verifies automatic marking of unread messages as read."""
-    t_id, ph_id = await ensure_two_users(async_client, talent_headers, ph_headers)
+    t_id, ph_id, _ = await setup_accepted_collaboration(async_client, talent_headers, ph_headers)
 
     # Talent sends 2 messages to PH
     await async_client.post(
@@ -173,28 +298,42 @@ async def test_conversation_summaries(
     talent2_headers: dict,
 ):
     """Verifies listing conversation summaries grouped by conversation partner."""
-    t_id, ph_id = await ensure_two_users(async_client, talent_headers, ph_headers)
-    _, t2_id = await ensure_two_users(async_client, talent_headers, talent2_headers)
+    t_id, ph_id, _ = await setup_accepted_collaboration(async_client, talent_headers, ph_headers)
 
-    # Talent messages PH and Talent 2
+    # Also invite and accept talent2 on the same project
+    t2_res = await async_client.get("/api/v1/users/me", headers=talent2_headers)
+    t2_id = t2_res.json()["id"]
+
+    # PH creates project and invites talent2
+    proj_res = await async_client.post("/api/v1/projects", headers=ph_headers, json={"title": "Second Project"})
+    proj_id = proj_res.json()["id"]
+    collab2_res = await async_client.post(
+        "/api/v1/collaborations/",
+        headers=ph_headers,
+        json={"project_id": proj_id, "talent_id": t2_id, "role": "Supporting Actor"},
+    )
+    collab2_id = collab2_res.json()["id"]
+    await async_client.patch(f"/api/v1/collaborations/{collab2_id}/accept", headers=talent2_headers)
+
+    # PH messages Talent 1 and Talent 2
     await async_client.post(
         "/api/v1/messages/",
-        headers=talent_headers,
-        json={"recipient_id": str(ph_id), "body": "Hi Producer!"},
+        headers=ph_headers,
+        json={"recipient_id": str(t_id), "body": "Hi Talent 1!"},
     )
     await async_client.post(
         "/api/v1/messages/",
-        headers=talent_headers,
-        json={"recipient_id": str(t2_id), "body": "Hi Fellow Actor!"},
+        headers=ph_headers,
+        json={"recipient_id": str(t2_id), "body": "Hi Talent 2!"},
     )
 
-    # Talent checks summaries
-    summaries_res = await async_client.get("/api/v1/messages/conversations", headers=talent_headers)
+    # PH checks summaries
+    summaries_res = await async_client.get("/api/v1/messages/conversations", headers=ph_headers)
     assert summaries_res.status_code == 200
     summaries = summaries_res.json()
     assert len(summaries) >= 2
     partner_ids = [s["user_id"] for s in summaries]
-    assert str(ph_id) in partner_ids
+    assert str(t_id) in partner_ids
     assert str(t2_id) in partner_ids
 
 
@@ -205,7 +344,7 @@ async def test_get_and_delete_message(
     ph_headers: dict,
 ):
     """Verifies retrieving single message by ID and deleting a message."""
-    _, ph_id = await ensure_two_users(async_client, talent_headers, ph_headers)
+    _, ph_id, _ = await setup_accepted_collaboration(async_client, talent_headers, ph_headers)
 
     send_res = await async_client.post(
         "/api/v1/messages/",
@@ -288,7 +427,7 @@ async def test_third_party_cannot_view_or_delete_message(
     talent2_headers: dict,
 ):
     """Verifies that an unrelated user (Talent 2) cannot view or delete a message between Talent 1 and PH."""
-    _, ph_id = await ensure_two_users(async_client, talent_headers, ph_headers)
+    _, ph_id, _ = await setup_accepted_collaboration(async_client, talent_headers, ph_headers)
     await async_client.get("/api/v1/users/me", headers=talent2_headers)
 
     send_res = await async_client.post(

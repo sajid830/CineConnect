@@ -24,6 +24,6 @@ class CollaborationResponse(BaseModel):
     role: Optional[str] = None
     status: str
     invited_at: Optional[datetime] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
     updated_at: datetime
     talent: Optional[TalentSummaryResponse] = None

@@ -9,6 +9,7 @@ from app.api.dependencies import get_current_user, require_talent, require_produ
 from app.models.user import User
 from app.models.production_house import ProductionHouse, Project
 from app.models.social import Collaboration
+from app.models.notification import Notification
 from app.schemas.collaboration import (
     CollaborationCreate,
     CollaborationStatusUpdate,
@@ -46,7 +47,8 @@ async def create_collaboration(
             Project.production_house_id == ph.id,
         )
     )
-    if not proj_res.scalar_one_or_none():
+    project = proj_res.scalar_one_or_none()
+    if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found or does not belong to your production house.",
@@ -86,6 +88,13 @@ async def create_collaboration(
         inactive_collab.status = "invited"
         inactive_collab.role = collab_in.role
         inactive_collab.invited_at = func.now()
+        notif = Notification(
+            user_id=target_talent.id,
+            type="collaboration",
+            title=f"Collaboration Invitation: {project.title}",
+            message=f"{ph.company_name or 'Production House'} invited you to join '{project.title}' as {collab_in.role or 'Talent'}. [collab:{inactive_collab.id}]",
+        )
+        db.add(notif)
         await db.commit()
         await db.refresh(inactive_collab)
         inactive_collab.talent = target_talent
@@ -98,6 +107,15 @@ async def create_collaboration(
         status="invited",
     )
     db.add(collaboration)
+    await db.flush()
+
+    notif = Notification(
+        user_id=target_talent.id,
+        type="collaboration",
+        title=f"Collaboration Invitation: {project.title}",
+        message=f"{ph.company_name or 'Production House'} invited you to join '{project.title}' as {collab_in.role or 'Talent'}. [collab:{collaboration.id}]",
+    )
+    db.add(notif)
     await db.commit()
     await db.refresh(collaboration)
     collaboration.talent = target_talent
@@ -117,7 +135,7 @@ async def list_my_collaborations(
         stmt = (
             select(Collaboration)
             .where(Collaboration.talent_id == current_user.id)
-            .order_by(Collaboration.created_at.desc())
+            .order_by(Collaboration.invited_at.desc())
             .offset(skip)
             .limit(limit)
         )
@@ -132,7 +150,7 @@ async def list_my_collaborations(
             select(Collaboration)
             .join(Project, Collaboration.project_id == Project.id)
             .where(Project.production_house_id == ph.id)
-            .order_by(Collaboration.created_at.desc())
+            .order_by(Collaboration.invited_at.desc())
             .offset(skip)
             .limit(limit)
         )
@@ -191,6 +209,22 @@ async def accept_collaboration(
         )
 
     collab.status = "accepted"
+
+    # Notify Production House owner
+    proj_res = await db.execute(select(Project).where(Project.id == collab.project_id))
+    proj = proj_res.scalar_one_or_none()
+    if proj:
+        ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == proj.production_house_id))
+        ph = ph_res.scalar_one_or_none()
+        if ph:
+            notif = Notification(
+                user_id=ph.user_id,
+                type="collaboration",
+                title=f"{current_user.full_name or 'Talent'} accepted your invite!",
+                message=f"{current_user.full_name or 'Talent'} accepted the invitation for '{proj.title}'. You can now chat in Messages.",
+            )
+            db.add(notif)
+
     await db.commit()
     await db.refresh(collab)
     collab.talent = current_user
@@ -218,6 +252,22 @@ async def reject_collaboration(
         )
 
     collab.status = "rejected"
+
+    # Notify Production House owner
+    proj_res = await db.execute(select(Project).where(Project.id == collab.project_id))
+    proj = proj_res.scalar_one_or_none()
+    if proj:
+        ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == proj.production_house_id))
+        ph = ph_res.scalar_one_or_none()
+        if ph:
+            notif = Notification(
+                user_id=ph.user_id,
+                type="collaboration",
+                title=f"{current_user.full_name or 'Talent'} declined your invite",
+                message=f"{current_user.full_name or 'Talent'} declined the invitation for '{proj.title}'.",
+            )
+            db.add(notif)
+
     await db.commit()
     await db.refresh(collab)
     collab.talent = current_user

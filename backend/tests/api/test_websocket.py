@@ -17,9 +17,21 @@ import app.api.websocket as ws_module
 
 @pytest.fixture(autouse=True)
 def mock_websocket_db(monkeypatch):
-    """Mocks AsyncSessionLocal inside websocket module to guarantee fast in-memory
+    """Mocks AsyncSessionLocal inside websocket module and init_db in main to guarantee fast in-memory
     execution and 100% isolation from live databases.
     """
+    async def _mock_init_db():
+        return True
+
+    monkeypatch.setattr("app.main.init_db", _mock_init_db)
+
+    class MockResult:
+        def __init__(self, value=None):
+            self._value = value
+
+        def scalar_one_or_none(self):
+            return self._value
+
     class MockSession:
         async def __aenter__(self):
             return self
@@ -28,14 +40,28 @@ def mock_websocket_db(monkeypatch):
             pass
 
         def add(self, obj):
-            obj.id = uuid.uuid4()
-            obj.created_at = datetime.now(timezone.utc)
+            if not getattr(obj, "id", None):
+                obj.id = uuid.uuid4()
+            if not getattr(obj, "created_at", None):
+                obj.created_at = datetime.now(timezone.utc)
 
         async def commit(self):
             pass
 
+        async def rollback(self):
+            pass
+
         async def refresh(self, obj):
             pass
+
+        async def execute(self, statement):
+            # If checking recipient user existence, return a mock user
+            stmt_str = str(statement)
+            if "users" in stmt_str.lower():
+                mock_user = type("MockUser", (), {"id": uuid.uuid4()})()
+                return MockResult(mock_user)
+            # Default for message lookup (e.g. idempotency check) is None
+            return MockResult(None)
 
     monkeypatch.setattr(ws_module, "AsyncSessionLocal", MockSession)
 
@@ -144,13 +170,48 @@ def test_websocket_non_json_payload_ignored_gracefully(talent_token: str):
 # Message Delivery & Real-Time Broadcast
 # ==============================================================================
 
+def test_websocket_send_message_rejected_without_accepted_collaboration(
+    talent_token: str,
+    talent2_user_id: UUID,
+    monkeypatch,
+):
+    """Verifies that sending a WebSocket message without an accepted collaboration is rejected."""
+    client = TestClient(app)
+
+    # get_accepted_collaboration returns None
+    async def mock_no_collab(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(ws_module, "get_accepted_collaboration", mock_no_collab)
+
+    with client.websocket_connect(f"/ws/chat?token={talent_token}") as ws:
+        ws.receive_json()  # Handshake
+
+        ws.send_json({
+            "type": "message",
+            "recipient_id": str(talent2_user_id),
+            "body": "Unauthorized hello!",
+        })
+
+        err_res = ws.receive_json()
+        assert "Unauthorized" in err_res.get("error", "")
+
+
 def test_websocket_send_message_echo_and_realtime_recipient_delivery(
     talent_token: str,
     talent_user_id: UUID,
     talent2_user_id: UUID,
+    monkeypatch,
 ):
     """Verifies message sending produces echo to sender and real-time delivery to recipient."""
     client = TestClient(app)
+
+    # Mock accepted collaboration
+    mock_collab = type("MockCollaboration", (), {"id": uuid.uuid4()})()
+    async def mock_has_collab(*args, **kwargs):
+        return mock_collab
+
+    monkeypatch.setattr(ws_module, "get_accepted_collaboration", mock_has_collab)
 
     # Register mock WebSocket connection for recipient in ConnectionManager
     mock_recipient_ws = AsyncMock()
@@ -165,6 +226,7 @@ def test_websocket_send_message_echo_and_realtime_recipient_delivery(
                 "type": "message",
                 "recipient_id": str(talent2_user_id),
                 "body": "Audition confirmed for Monday morning!",
+                "client_message_id": "ws-client-msg-123",
             })
 
             # Sender receives echo confirmation
@@ -173,6 +235,7 @@ def test_websocket_send_message_echo_and_realtime_recipient_delivery(
             assert echo["sender_id"] == str(talent_user_id)
             assert echo["recipient_id"] == str(talent2_user_id)
             assert echo["body"] == "Audition confirmed for Monday morning!"
+            assert echo["client_message_id"] == "ws-client-msg-123"
             assert "message_id" in echo
             assert "created_at" in echo
 
@@ -182,6 +245,7 @@ def test_websocket_send_message_echo_and_realtime_recipient_delivery(
             assert called_arg["event"] == "new_message"
             assert called_arg["body"] == "Audition confirmed for Monday morning!"
             assert called_arg["sender_id"] == str(talent_user_id)
+            assert called_arg["client_message_id"] == "ws-client-msg-123"
     finally:
         # Cleanup mock connection
         if talent2_user_id in ws_module.manager.active_connections:

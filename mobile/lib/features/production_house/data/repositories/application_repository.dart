@@ -31,9 +31,8 @@ class _Record {
     required this.status,
     required this.coverLetter,
     required this.appliedAt,
-    this.resumeUrl,
-    this.reelUrl,
-  });
+  })  : resumeUrl = null,
+        reelUrl = null;
 }
 
 class MockApplicationRepository implements ApplicationRepository {
@@ -41,57 +40,7 @@ class MockApplicationRepository implements ApplicationRepository {
 
   MockApplicationRepository(this._talentRepository);
 
-  final List<_Record> _records = [
-    _Record(
-      id: 'a1',
-      talentId: 't1',
-      opportunityId: 'o1',
-      status: ApplicationStatus.received,
-      coverLetter:
-          'I have six years of experience in thrillers and trained in stunt work. I would love to audition for this role.',
-      appliedAt: DateTime(2026, 11, 14),
-      resumeUrl: 'https://cdn.cineconnect.com/media/mock/resume1.pdf',
-      reelUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    ),
-    _Record(
-      id: 'a2',
-      talentId: 't2',
-      opportunityId: 'o1',
-      status: ApplicationStatus.underReview,
-      coverLetter:
-          'I work in Malayalam and Tamil cinema and am comfortable with Hindi and English dialogue.',
-      appliedAt: DateTime(2026, 11, 12),
-      resumeUrl: 'https://cdn.cineconnect.com/media/mock/resume2.pdf',
-    ),
-    _Record(
-      id: 'a3',
-      talentId: 't8',
-      opportunityId: 'o1',
-      status: ApplicationStatus.shortlisted,
-      coverLetter:
-          'Actor and voice artist with dubbing experience in four languages. Available from December.',
-      appliedAt: DateTime(2026, 11, 10),
-      reelUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    ),
-    _Record(
-      id: 'a4',
-      talentId: 't3',
-      opportunityId: 'o2',
-      status: ApplicationStatus.received,
-      coverLetter:
-          'Nine years as a director of photography. My showreel covers features and ad films.',
-      appliedAt: DateTime(2026, 11, 15),
-    ),
-    _Record(
-      id: 'a5',
-      talentId: 't5',
-      opportunityId: 'o2',
-      status: ApplicationStatus.rejected,
-      coverLetter:
-          'I am mainly an editor, but I have shot a few short films and would like to move into camera work.',
-      appliedAt: DateTime(2026, 11, 9),
-    ),
-  ];
+  final List<_Record> _records = [];
 
   @override
   Future<List<JobApplication>> getApplications() async {
@@ -253,8 +202,5 @@ class RemoteApplicationRepository implements ApplicationRepository {
 }
 
 final applicationRepositoryProvider = Provider<ApplicationRepository>((ref) {
-  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: false);
-  return useMock
-      ? MockApplicationRepository(ref.watch(talentRepositoryProvider))
-      : RemoteApplicationRepository();
+  return RemoteApplicationRepository();
 });

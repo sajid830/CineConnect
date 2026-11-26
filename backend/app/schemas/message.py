@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class MessageCreate(BaseModel):
     recipient_id: UUID = Field(..., json_schema_extra={"example": "123e4567-e89b-12d3-a456-426614174000"})
     body: str = Field(..., json_schema_extra={"example": "Hello! We loved your audition tape and would like to invite you for a chemistry read."})
+    client_message_id: Optional[str] = Field(None, max_length=100, json_schema_extra={"example": "client-uuid-or-id"})
 
 
 class MessageResponse(BaseModel):
@@ -15,6 +16,8 @@ class MessageResponse(BaseModel):
     id: UUID
     sender_id: UUID
     recipient_id: UUID
+    collaboration_id: Optional[UUID] = None
+    client_message_id: Optional[str] = None
     body: str
     is_read: bool
     created_at: datetime

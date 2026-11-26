@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,10 +6,13 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cineconnect/app/theme.dart';
+import 'package:cineconnect/core/models/craft_models.dart';
+import 'package:cineconnect/core/network/api_client.dart';
+import 'package:cineconnect/core/network/api_endpoints.dart';
 import 'package:cineconnect/core/utils/formatters.dart';
 import 'package:cineconnect/features/production_house/data/models/company_profile.dart';
 import 'package:cineconnect/features/production_house/data/models/opportunity.dart';
-import 'package:cineconnect/features/production_house/data/models/portfolio_item.dart';
+import 'package:cineconnect/features/production_house/data/repositories/media_repository.dart';
 import 'package:cineconnect/shared/widgets/app_card.dart';
 import 'package:cineconnect/shared/widgets/async_body.dart';
 import 'package:cineconnect/shared/widgets/empty_state.dart';
@@ -19,10 +23,21 @@ import 'package:cineconnect/features/production_house/home/home_provider.dart';
 import 'package:cineconnect/features/production_house/notifications/notifications_provider.dart';
 import 'package:cineconnect/features/production_house/opportunities/opportunities_provider.dart';
 import 'package:cineconnect/features/production_house/projects/projects_provider.dart';
-import 'package:cineconnect/features/production_house/talent_discovery/portfolio_provider.dart';
 import 'package:cineconnect/features/production_house/talent_discovery/talent_provider.dart';
 import 'company_logo.dart';
 import 'company_profile_provider.dart';
+
+/// Provider for studio feed posts
+final studioPostsProvider = FutureProvider.autoDispose.family<List<CineFeedPost>, String>((ref, studioId) async {
+  final client = ApiClient();
+  try {
+    final res = await client.get(ApiEndpoints.postsCollection);
+    if (res is List) {
+      return res.map((e) => CineFeedPost.fromJson(e as Map<String, dynamic>)).toList();
+    }
+  } catch (_) {}
+  return [];
+});
 
 /// Clears and invalidates all user-specific Production House state and caches.
 void invalidateProductionHouseState(WidgetRef ref) {
@@ -161,7 +176,8 @@ class _ProfileView extends ConsumerStatefulWidget {
 }
 
 class _ProfileViewState extends ConsumerState<_ProfileView> {
-  static const _tabs = ['Portfolio', 'Projects', 'Posts', 'Reels'];
+  static const _tabs = ['Projects', 'Posts', 'Reels'];
+  static const MethodChannel _nativeShareChannel = MethodChannel('cineconnect/native_share');
 
   final _picker = ImagePicker();
   bool _uploading = false;
@@ -185,24 +201,34 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
     return 'image/jpeg';
   }
 
-  Future<void> _chooseLogoAction() async {
+  Future<void> _chooseLogoAction([CompanyProfile? profile]) async {
+    final currentProfile = profile ?? ref.read(companyProfileProvider).valueOrNull ?? widget.profile;
+    final hasLogo = currentProfile.logoUrl != null && currentProfile.logoUrl!.trim().isNotEmpty;
+
     final action = await showModalBottomSheet<String>(
       context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        side: BorderSide(color: AppColors.border),
+      ),
       builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
+              leading: const Icon(Icons.photo_library_outlined, color: AppColors.gold),
               title: const Text('Choose from gallery'),
               onTap: () => Navigator.of(sheetContext).pop('gallery'),
             ),
-            if (widget.profile.logoUrl != null)
-              ListTile(
-                leading: const Icon(Icons.delete_outline),
-                title: const Text('Remove logo'),
-                onTap: () => Navigator.of(sheetContext).pop('remove'),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: AppColors.error),
+              title: const Text(
+                'Remove logo / picture',
+                style: TextStyle(color: AppColors.error),
               ),
+              onTap: () => Navigator.of(sheetContext).pop('remove'),
+            ),
           ],
         ),
       ),
@@ -210,7 +236,11 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
     if (action == 'gallery') {
       await _pickAndUpload();
     } else if (action == 'remove') {
-      await _removeLogo();
+      if (!hasLogo) {
+        if (mounted) _say('No logo to remove');
+      } else {
+        await _removeLogo();
+      }
     }
   }
 
@@ -242,8 +272,15 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
             contentType: _contentTypeFor(file),
           );
       if (mounted) _say('Logo updated');
-    } catch (_) {
-      if (mounted) _say('Could not upload the logo. Try again.');
+    } catch (e) {
+      if (mounted) {
+        final msg = e is ApiException
+            ? e.message
+            : (e.toString().contains('SocketException')
+                ? 'Could not connect to storage server'
+                : 'Could not upload the logo: $e');
+        _say(msg);
+      }
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
@@ -253,9 +290,13 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
     setState(() => _uploading = true);
     try {
       await ref.read(companyProfileProvider.notifier).removeLogo();
+      ref.invalidate(companyProfileProvider);
       if (mounted) _say('Logo removed');
-    } catch (_) {
-      if (mounted) _say('Could not remove the logo');
+    } catch (e) {
+      if (mounted) {
+        final msg = e is ApiException ? e.message : 'Could not remove the logo';
+        _say(msg);
+      }
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
@@ -264,10 +305,223 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
   // ---------- actions ----------
 
   Future<void> _share(CompanyProfile p) async {
-    // Placeholder link: the real domain comes from the backend team.
     final link = 'https://cineconnect.app/studio/${p.username ?? p.id}';
-    await Clipboard.setData(ClipboardData(text: link));
-    if (mounted) _say('Profile link copied');
+    final shareText = 'Check out ${p.companyName} on CineConnect:\n$link';
+    try {
+      await _nativeShareChannel.invokeMethod('shareText', {
+        'text': shareText,
+        'title': 'Share Studio Profile',
+      });
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: link));
+      if (mounted) _say('Profile link copied to clipboard');
+    }
+  }
+
+  Future<void> _openCreatePostDialog(BuildContext context, CompanyProfile p) async {
+    final textController = TextEditingController();
+    XFile? attachedImage;
+    bool isSubmitting = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: AppColors.border, width: 1),
+      ),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 20,
+              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.gold.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.movie_creation_outlined, color: AppColors.gold, size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p.companyName,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            const Text(
+                              'Share an update, casting call, or announcement',
+                              style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: AppColors.textMuted),
+                        onPressed: () => Navigator.of(sheetCtx).pop(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: textController,
+                    maxLines: 4,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: "What's happening at ${p.companyName}? Write your post here...",
+                      hintStyle: const TextStyle(color: AppColors.textMuted),
+                      filled: true,
+                      fillColor: AppColors.surfaceElevated,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.gold, width: 1.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (attachedImage != null)
+                    Stack(
+                      children: [
+                        Container(
+                          height: 140,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.border),
+                            image: DecorationImage(
+                              image: FileImage(File(attachedImage!.path)),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: GestureDetector(
+                            onTap: () => setSheetState(() => attachedImage = null),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.black87,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.close, size: 16, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                final img = await _picker.pickImage(
+                                  source: ImageSource.gallery,
+                                  imageQuality: 85,
+                                );
+                                if (img != null) {
+                                  setSheetState(() => attachedImage = img);
+                                }
+                              },
+                        icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+                        label: Text(attachedImage == null ? 'Add Photo' : 'Change Photo'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.gold,
+                          side: const BorderSide(color: AppColors.gold),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                      const Spacer(),
+                      ElevatedButton(
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                final text = textController.text.trim();
+                                if (text.isEmpty && attachedImage == null) {
+                                  _say('Please write some text or attach a photo');
+                                  return;
+                                }
+                                setSheetState(() => isSubmitting = true);
+                                try {
+                                  String? uploadedUrl;
+                                  if (attachedImage != null) {
+                                    final bytes = await attachedImage!.readAsBytes();
+                                    uploadedUrl = await ref.read(mediaRepositoryProvider).uploadImage(
+                                          bytes: bytes,
+                                          filename: attachedImage!.name,
+                                          contentType: _contentTypeFor(attachedImage!),
+                                        );
+                                  }
+                                  final client = ApiClient();
+                                  final finalCaption = text.isNotEmpty
+                                      ? text
+                                      : (attachedImage != null ? 'Studio update from ${p.companyName}' : '');
+                                  await client.post(
+                                    ApiEndpoints.postsCollection,
+                                    body: {
+                                      'caption': finalCaption,
+                                      if (uploadedUrl != null) 'media_url': uploadedUrl,
+                                      'video_slate_title': p.companyName,
+                                      'tags': ['Production', 'StudioUpdate'],
+                                    },
+                                  );
+                                  if (mounted && sheetCtx.mounted) {
+                                    Navigator.of(sheetCtx).pop();
+                                    _say('Post published to cinema feed!');
+                                    ref.invalidate(studioPostsProvider);
+                                    setState(() => _tab = 1);
+                                  }
+                                } catch (e) {
+                                  setSheetState(() => isSubmitting = false);
+                                  final msg = e is ApiException ? e.message : 'Could not publish post: $e';
+                                  _say(msg);
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.gold,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: isSubmitting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                              )
+                            : const Text('Post', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   // ---------- pieces ----------
@@ -277,7 +531,7 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
       clipBehavior: Clip.none,
       children: [
         GestureDetector(
-          onTap: _uploading ? null : _chooseLogoAction,
+          onTap: _uploading ? null : () => _chooseLogoAction(p),
           child: Container(
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
@@ -310,17 +564,20 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
         Positioned(
           right: -4,
           bottom: -4,
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: AppColors.gold,
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.black, width: 2),
-            ),
-            child: const Icon(
-              Icons.photo_camera,
-              size: 14,
-              color: Colors.black,
+          child: GestureDetector(
+            onTap: _uploading ? null : () => _chooseLogoAction(p),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: AppColors.gold,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.black, width: 2),
+              ),
+              child: const Icon(
+                Icons.photo_camera,
+                size: 14,
+                color: Colors.black,
+              ),
             ),
           ),
         ),
@@ -471,16 +728,13 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
   Widget _tabContent(CompanyProfile p) {
     switch (_tab) {
       case 0:
-        return _PortfolioTab(studioId: p.id);
-      case 1:
         return const _ProjectsTab();
-      case 2:
-        return EmptyState(
-          message: 'No posts yet',
-          icon: Icons.article_outlined,
-          actionLabel: 'Create a post',
-          onAction: () => _say('Posting arrives with the social module'),
+      case 1:
+        return _PostsTab(
+          companyProfile: p,
+          onNewPost: () => _openCreatePostDialog(context, p),
         );
+      case 2:
       default:
         return const EmptyState(
           message: 'No reels yet',
@@ -491,7 +745,7 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
 
   @override
   Widget build(BuildContext context) {
-    final p = widget.profile;
+    final p = ref.watch(companyProfileProvider).valueOrNull ?? widget.profile;
     final infoItems = <_InfoItem>[
       _InfoItem(Icons.location_on_outlined, p.location),
       if (p.website != null)
@@ -603,7 +857,7 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
                 icon: Icons.add_photo_alternate_outlined,
                 label: 'Post',
                 filled: true,
-                onPressed: () => _say('Posting arrives with the social module'),
+                onPressed: () => _openCreatePostDialog(context, p),
               ),
             ],
           ),
@@ -675,118 +929,128 @@ class _InfoItem extends StatelessWidget {
   }
 }
 
-class _PortfolioTab extends ConsumerWidget {
-  final String studioId;
+class _PostsTab extends ConsumerWidget {
+  final CompanyProfile companyProfile;
+  final VoidCallback onNewPost;
 
-  const _PortfolioTab({required this.studioId});
+  const _PostsTab({required this.companyProfile, required this.onNewPost});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(portfolioProvider(studioId));
+    final postsAsync = ref.watch(studioPostsProvider(companyProfile.id));
 
-    return async.when(
+    return postsAsync.when(
       loading: () => const Padding(
         padding: EdgeInsets.symmetric(vertical: 32),
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (error, _) => Row(
+      error: (e, _) => Row(
         children: [
           const Expanded(
             child: Text(
-              'Could not load portfolio',
+              'Could not load posts',
               style: TextStyle(color: AppColors.textMuted),
             ),
           ),
           TextButton(
-            onPressed: () => ref.invalidate(portfolioProvider(studioId)),
+            onPressed: () => ref.invalidate(studioPostsProvider(companyProfile.id)),
             child: const Text('Try again'),
           ),
         ],
       ),
-      data: (items) {
-        if (items.isEmpty) {
-          return const EmptyState(
-            message: 'No portfolio items yet',
-            icon: Icons.movie_creation_outlined,
+      data: (posts) {
+        if (posts.isEmpty) {
+          return EmptyState(
+            message: 'No posts yet',
+            icon: Icons.article_outlined,
+            actionLabel: 'Create a post',
+            onAction: onNewPost,
           );
         }
-        return GridView.builder(
+        return ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: items.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            mainAxisExtent: 216,
-          ),
-          itemBuilder: (_, i) => _WorkCard(item: items[i]),
+          itemCount: posts.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, i) {
+            final post = posts[i];
+            return AppCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor: AppColors.gold.withValues(alpha: 0.2),
+                        child: Text(
+                          post.authorAvatar.isNotEmpty ? post.authorAvatar : 'CC',
+                          style: const TextStyle(
+                            color: AppColors.gold,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              post.authorName,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                            Text(
+                              post.timestamp,
+                              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      StatusPill(label: post.guildBadge, color: AppColors.gold),
+                    ],
+                  ),
+                  if (post.contentText.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      post.contentText,
+                      style: const TextStyle(fontSize: 14, height: 1.4),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Icon(Icons.thumb_up_alt_outlined, size: 16, color: AppColors.textMuted),
+                      const SizedBox(width: 4),
+                      Text('${post.likes}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                      const SizedBox(width: 16),
+                      const Icon(Icons.chat_bubble_outline, size: 16, color: AppColors.textMuted),
+                      const SizedBox(width: 4),
+                      Text('${post.comments}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                      const Spacer(),
+                      Wrap(
+                        spacing: 6,
+                        children: post.taggedCrafts.take(2).map((tag) => Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceElevated,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '#$tag',
+                            style: const TextStyle(fontSize: 10, color: AppColors.gold),
+                          ),
+                        )).toList(),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
-    );
-  }
-}
-
-class _WorkCard extends StatelessWidget {
-  final PortfolioItem item;
-
-  const _WorkCard({required this.item});
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 84,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceElevated,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.movie_creation_outlined,
-                  color: AppColors.gold,
-                  size: 28,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${item.year}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            item.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            item.genre ?? item.type.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-          ),
-          if (item.highlight != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              item.highlight!,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            ),
-          ],
-        ],
-      ),
     );
   }
 }

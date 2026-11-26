@@ -19,6 +19,7 @@ import '../../features/production_house/talent_discovery/talent_detail_screen.da
 import '../../features/production_house/company_profile/company_profile_screen.dart';
 import '../../features/production_house/company_profile/edit_company_profile_screen.dart';
 import '../../features/production_house/chat/chat_screen.dart';
+import '../../features/production_house/chat/chat_list_screen.dart';
 import '../../features/production_house/notifications/notifications_screen.dart';
 import '../../features/diagnostics/presentation/diagnostic_home_screen.dart';
 import '../../features/search/global_search_screen.dart';
@@ -256,7 +257,10 @@ final GoRouter appRouter = GoRouter(
       path: '/ph-chat',
       name: 'ph_chat',
       builder: (context, state) {
-        final id = state.uri.queryParameters['collaborationId'] ?? 'general';
+        final id = state.uri.queryParameters['collaborationId'];
+        if (id == null || id.isEmpty || id == 'general') {
+          return const ChatListScreen();
+        }
         return ChatScreen(collaborationId: id);
       },
     ),

@@ -48,14 +48,16 @@ class RemoteCollaborationRepository implements CollaborationRepository {
 
     if (res is List) {
       final Map<String, Collaboration> deduplicated = {};
-      for (final item in res.whereType<Map<String, dynamic>>()) {
-        try {
-          final collab = Collaboration.fromJson(item);
-          if (collab.id.isNotEmpty) {
-            deduplicated[collab.id] = collab;
+      for (final item in res) {
+        if (item is Map) {
+          try {
+            final collab = Collaboration.fromJson(Map<String, dynamic>.from(item));
+            if (collab.id.isNotEmpty) {
+              deduplicated[collab.id] = collab;
+            }
+          } catch (_) {
+            // Gracefully skip malformed entry
           }
-        } catch (_) {
-          // Gracefully skip malformed entry
         }
       }
       final list = deduplicated.values.toList();
@@ -134,36 +136,7 @@ class MockCollaborationRepository implements CollaborationRepository {
 
   MockCollaborationRepository(this._talentRepository);
 
-  final List<_CollabRecord> _records = [
-    _CollabRecord(
-      id: 'c1',
-      projectId: 'p1',
-      talentId: 't3',
-      status: CollaborationStatus.accepted,
-      invitedAt: DateTime(2026, 10, 2),
-    ),
-    _CollabRecord(
-      id: 'c2',
-      projectId: 'p1',
-      talentId: 't8',
-      status: CollaborationStatus.accepted,
-      invitedAt: DateTime(2026, 11, 13),
-    ),
-    _CollabRecord(
-      id: 'c3',
-      projectId: 'p1',
-      talentId: 't7',
-      status: CollaborationStatus.declined,
-      invitedAt: DateTime(2026, 10, 20),
-    ),
-    _CollabRecord(
-      id: 'c4',
-      projectId: 'p2',
-      talentId: 't4',
-      status: CollaborationStatus.invited,
-      invitedAt: DateTime(2026, 11, 15),
-    ),
-  ];
+  final List<_CollabRecord> _records = [];
 
   @override
   Future<List<Collaboration>> getCollaborations() async {
@@ -243,9 +216,6 @@ class MockCollaborationRepository implements CollaborationRepository {
 }
 
 final collaborationRepositoryProvider = Provider<CollaborationRepository>((ref) {
-  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: false);
-  return useMock
-      ? MockCollaborationRepository(ref.watch(talentRepositoryProvider))
-      : RemoteCollaborationRepository();
+  return RemoteCollaborationRepository();
 });
 

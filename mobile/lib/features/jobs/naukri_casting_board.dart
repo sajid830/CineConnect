@@ -22,9 +22,7 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
   @override
   void initState() {
     super.initState();
-    if (widget.appState.isUsingFallbackOpportunities) {
-      widget.appState.loadOpportunities();
-    }
+    widget.appState.loadOpportunities(forceRefresh: true);
   }
 
   List<String> _getAvailableCraftFilters() {
@@ -1139,8 +1137,8 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                                 padding: const EdgeInsets.symmetric(vertical: 8),
                               ),
                               child: Text(
-                                job.hasUserApplied ? '✓ Audition Submitted' : '1-Tap Self-Tape Apply',
-                                style: const TextStyle(fontSize: 11.5),
+                                job.hasUserApplied ? '✓ Applied' : 'Apply',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                               ),
                             ),
                           ),

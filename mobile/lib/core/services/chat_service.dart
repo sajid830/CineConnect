@@ -109,6 +109,7 @@ class ChatService {
   Future<Map<String, dynamic>> sendMessageRest({
     required String recipientId,
     required String body,
+    String? clientMessageId,
   }) async {
     try {
       final res = await _apiClient.post(
@@ -116,6 +117,8 @@ class ChatService {
         body: {
           'recipient_id': recipientId,
           'body': body,
+          if (clientMessageId != null && clientMessageId.isNotEmpty)
+            'client_message_id': clientMessageId,
         },
       );
       if (res is Map) {
@@ -214,6 +217,7 @@ class ChatService {
   bool sendMessageWebSocket({
     required String recipientId,
     required String body,
+    String? clientMessageId,
   }) {
     if (_channel != null && _currentState == ChatConnectionState.connected) {
       try {
@@ -221,6 +225,8 @@ class ChatService {
           'type': 'message',
           'recipient_id': recipientId,
           'body': body,
+          if (clientMessageId != null && clientMessageId.isNotEmpty)
+            'client_message_id': clientMessageId,
         });
         _channel!.sink.add(payload);
         return true;
@@ -237,8 +243,13 @@ class ChatService {
   Future<Map<String, dynamic>> sendMessage({
     required String recipientId,
     required String body,
+    String? clientMessageId,
   }) async {
-    return await sendMessageRest(recipientId: recipientId, body: body);
+    return await sendMessageRest(
+      recipientId: recipientId,
+      body: body,
+      clientMessageId: clientMessageId,
+    );
   }
 
   void _startPingTimer() {

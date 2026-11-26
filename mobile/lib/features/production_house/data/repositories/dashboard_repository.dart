@@ -110,14 +110,6 @@ class MockDashboardRepository implements DashboardRepository {
 }
 
 final dashboardRepositoryProvider = Provider<DashboardRepository>((ref) {
-  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: false);
-  if (useMock) {
-    return MockDashboardRepository(
-      ref.watch(projectRepositoryProvider),
-      ref.watch(opportunityRepositoryProvider),
-      ref.watch(applicationRepositoryProvider),
-    );
-  }
   return RemoteDashboardRepository(
     applications: ref.watch(applicationRepositoryProvider),
   );

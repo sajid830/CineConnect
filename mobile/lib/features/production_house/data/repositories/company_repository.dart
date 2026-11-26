@@ -24,27 +24,17 @@ abstract class CompanyRepository {
 
 class MockCompanyRepository implements CompanyRepository {
   CompanyProfile _profile = const CompanyProfile(
-    id: 'ph1',
-    companyName: 'Sunrise Films',
-    username: 'sunrise_films',
-    publicId: 'PH-882941',
-    tagline: 'Independent thrillers and dramas from Chennai',
-    description:
-        'Independent production house making thrillers and dramas across South India. We cast and crew every project through open calls and champion new voices behind and in front of the camera.',
-    location: 'Chennai, India',
-    website: 'https://sunrisefilms.com',
-    contactEmail: 'casting@sunrisefilms.com',
-    companyType: 'Studio Signatory',
-    specialization: 'Thriller, Drama, Romance',
-    email: 'hello@sunrisefilms.com',
-    isVerified: true,
-    followersCount: 1400,
-    followingCount: 380,
+    id: '',
+    companyName: '',
+    description: '',
+    location: '',
+    specialization: '',
+    email: '',
+    isVerified: false,
   );
 
   @override
   Future<CompanyProfile> getProfile() async {
-    await Future.delayed(const Duration(milliseconds: 600));
     return _profile;
   }
 
@@ -230,6 +220,5 @@ class RemoteCompanyRepository implements CompanyRepository {
 }
 
 final companyRepositoryProvider = Provider<CompanyRepository>((ref) {
-  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: false);
-  return useMock ? MockCompanyRepository() : RemoteCompanyRepository();
+  return RemoteCompanyRepository();
 });
