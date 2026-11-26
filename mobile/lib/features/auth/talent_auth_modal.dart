@@ -17,20 +17,15 @@ class _TalentAuthModalState extends State<TalentAuthModal> {
   int _signUpStep = 0; // 0: Guild & Identity, 1: 24-Crafts & Specialized Skills, 2: Gear, Rate & Verification
 
   // Form Controllers
-  final _emailController = TextEditingController(text: 'mayaray@cinema.com');
-  final _passwordController = TextEditingController(text: '••••••••');
-  final _nameController = TextEditingController(text: 'Maya Ray');
-  final _guildIdController = TextEditingController(text: 'ISC-9021');
-  final _dayRateController = TextEditingController(text: '₹95,000 / Day');
-  final _gearController = TextEditingController(text: 'ARRI Alexa 35, Cooke Anamorphic /i, Ronin 2');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _guildIdController = TextEditingController();
+  final _dayRateController = TextEditingController();
+  final _gearController = TextEditingController();
 
   String _selectedPrimaryCraft = 'Cinematography / DOP';
-  final Set<String> _chosenSkills = {
-    'ARRI Alexa 35',
-    'Cooke Anamorphic /i',
-    'Unreal Engine 5 ICVFX',
-    'DaVinci Resolve Studio',
-  };
+  final Set<String> _chosenSkills = {};
 
   final List<String> _availableSkillOptions = [
     'ARRI Alexa 35',

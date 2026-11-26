@@ -787,6 +787,16 @@ class CineNotification {
     this.createdAt,
   });
 
+  String? get collaborationId {
+    if (type.toLowerCase() != 'collaboration') return null;
+    final match = RegExp(r'\[collab:([a-fA-F0-9\-]+)\]').firstMatch(description);
+    return match?.group(1);
+  }
+
+  String get cleanDescription {
+    return description.replaceAll(RegExp(r'\s*\[collab:[a-fA-F0-9\-]+\]'), '').trim();
+  }
+
   CineNotification copyWith({
     String? id,
     String? title,

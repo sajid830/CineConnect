@@ -2,6 +2,7 @@ import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, or_, and_, func, case
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -9,6 +10,7 @@ from app.api.dependencies import get_current_user
 from app.api.websocket import manager
 from app.models.user import User
 from app.models.message import Message
+from app.services.chat import get_accepted_collaboration
 from app.schemas.message import (
     MessageCreate,
     MessageResponse,
@@ -25,33 +27,73 @@ async def send_message(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Send a direct message to another user."""
+    """Send a direct message to another user with collaboration authorization and duplicate prevention."""
     if msg_in.recipient_id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot message yourself.",
         )
 
-    # Verify recipient exists
+    # 1. Idempotency Check: if client_message_id was already processed for this sender
+    if msg_in.client_message_id:
+        existing_res = await db.execute(
+            select(Message).where(
+                Message.sender_id == current_user.id,
+                Message.client_message_id == msg_in.client_message_id,
+            )
+        )
+        existing_msg = existing_res.scalar_one_or_none()
+        if existing_msg:
+            return existing_msg
+
+    # 2. Verify recipient exists
     rec_res = await db.execute(select(User).where(User.id == msg_in.recipient_id))
     if not rec_res.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient user not found")
 
+    # 3. Verify accepted collaboration authorization
+    collab = await get_accepted_collaboration(db, current_user.id, msg_in.recipient_id)
+    if not collab:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Messaging is only allowed between talent and production houses with an accepted collaboration.",
+        )
+
+    # 4. Create and persist message
     message = Message(
         sender_id=current_user.id,
         recipient_id=msg_in.recipient_id,
+        collaboration_id=collab.id,
+        client_message_id=msg_in.client_message_id,
         body=msg_in.body,
         is_read=False,
     )
     db.add(message)
-    await db.commit()
-    await db.refresh(message)
+    try:
+        await db.commit()
+        await db.refresh(message)
+    except IntegrityError:
+        await db.rollback()
+        # Handle concurrent race condition for duplicate client_message_id
+        if msg_in.client_message_id:
+            existing_res = await db.execute(
+                select(Message).where(
+                    Message.sender_id == current_user.id,
+                    Message.client_message_id == msg_in.client_message_id,
+                )
+            )
+            existing_msg = existing_res.scalar_one_or_none()
+            if existing_msg:
+                return existing_msg
+        raise
 
-    # Broadcast new message event to recipient if connected via WebSocket
+    # 5. Broadcast new message event to recipient if connected via WebSocket
     try:
         outgoing_data = {
             "event": "new_message",
             "message_id": str(message.id),
+            "client_message_id": message.client_message_id,
+            "collaboration_id": str(collab.id),
             "sender_id": str(current_user.id),
             "recipient_id": str(msg_in.recipient_id),
             "body": message.body,

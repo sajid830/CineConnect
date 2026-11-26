@@ -16,6 +16,24 @@ from app.schemas.notification import (
 router = APIRouter()
 
 
+@router.get("/unread-count", response_model=NotificationUnreadCountResponse)
+@router.get("/unread-count/", response_model=NotificationUnreadCountResponse)
+async def get_unread_count(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get count of unread notifications."""
+    result = await db.execute(
+        select(func.count(Notification.id)).where(
+            Notification.user_id == current_user.id,
+            Notification.is_read == False,
+        )
+    )
+    count = result.scalar_one() or 0
+    return NotificationUnreadCountResponse(unread_count=count)
+
+
+@router.get("", response_model=List[NotificationResponse])
 @router.get("/", response_model=List[NotificationResponse])
 async def list_notifications(
     skip: int = Query(0, ge=0),
@@ -31,22 +49,6 @@ async def list_notifications(
     stmt = stmt.order_by(Notification.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
-
-
-@router.get("/unread-count", response_model=NotificationUnreadCountResponse)
-async def get_unread_count(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get count of unread notifications."""
-    result = await db.execute(
-        select(func.count(Notification.id)).where(
-            Notification.user_id == current_user.id,
-            Notification.is_read == False,
-        )
-    )
-    count = result.scalar_one() or 0
-    return NotificationUnreadCountResponse(unread_count=count)
 
 
 @router.patch("/read-all", response_model=dict)

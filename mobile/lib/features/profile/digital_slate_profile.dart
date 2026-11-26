@@ -71,6 +71,15 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
                   _pickProfileAvatar(ImageSource.gallery);
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: CineColors.error),
+                title: const Text('Remove Picture', style: TextStyle(color: CineColors.error, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Delete current profile photo', style: TextStyle(color: CineColors.textMuted, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _removeProfileAvatar();
+                },
+              ),
             ],
           ),
         ),
@@ -118,6 +127,49 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
           SnackBar(
             backgroundColor: CineColors.surfaceElevated,
             content: Text('Could not upload photo: $e', style: const TextStyle(color: CineColors.error)),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeProfileAvatar() async {
+    try {
+      final currentAvatar = widget.appState.myProfile?.avatarUrl;
+      final hasLocal = _localAvatarFile != null;
+      final hasRemote = currentAvatar != null && currentAvatar.trim().isNotEmpty && !currentAvatar.trim().startsWith(RegExp(r'^[A-Z]{1,2}$'));
+      if (!hasLocal && !hasRemote) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: CineColors.surfaceElevated,
+              content: Text('No profile photo to remove.', style: TextStyle(color: CineColors.textMuted)),
+            ),
+          );
+        }
+        return;
+      }
+
+      setState(() {
+        _localAvatarFile = null;
+      });
+
+      await widget.appState.updateMyProfile({'avatar_url': ''});
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: CineColors.surfaceElevated,
+            content: Text('Profile photo removed.', style: TextStyle(color: CineColors.gold)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: CineColors.surfaceElevated,
+            content: Text('Could not remove photo: $e', style: const TextStyle(color: CineColors.error)),
           ),
         );
       }

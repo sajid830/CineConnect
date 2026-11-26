@@ -8,7 +8,7 @@ import 'collaboration_repository.dart';
 abstract class ChatRepository {
   Future<List<ChatMessage>> getMessages(String collaborationId);
 
-  Future<ChatMessage> send(String collaborationId, String body);
+  Future<ChatMessage> send(String collaborationId, String body, {String? clientMessageId});
 
   /// Messages from the other person, pushed as they arrive.
   Stream<ChatMessage> incoming(String collaborationId);
@@ -90,7 +90,9 @@ class RemoteChatRepository implements ChatRepository {
   @override
   Future<List<ChatMessage>> getMessages(String collaborationId) async {
     final partnerUserId = await _resolvePartnerUserId(collaborationId);
-    await _chatService.connectWebSocket();
+    try {
+      await _chatService.connectWebSocket();
+    } catch (_) {}
 
     final rawList = await _chatService.getConversationMessages(partnerUserId);
     final currentUserId = ApiClient.currentUserId;
@@ -110,14 +112,16 @@ class RemoteChatRepository implements ChatRepository {
   }
 
   @override
-  Future<ChatMessage> send(String collaborationId, String body) async {
+  Future<ChatMessage> send(String collaborationId, String body, {String? clientMessageId}) async {
     final partnerUserId = await _resolvePartnerUserId(collaborationId);
+    final cId = clientMessageId ?? 'ph-${DateTime.now().microsecondsSinceEpoch}-${body.hashCode}';
     final res = await _chatService.sendMessage(
       recipientId: partnerUserId,
       body: body,
+      clientMessageId: cId,
     );
 
-    final msgId = res['id']?.toString() ?? '';
+    final msgId = res['id']?.toString() ?? cId;
     final createdAt = DateTime.tryParse(res['created_at']?.toString() ?? '') ??
         DateTime.now();
 
@@ -184,7 +188,7 @@ class MockChatRepository implements ChatRepository {
   }
 
   @override
-  Future<ChatMessage> send(String collaborationId, String body) async {
+  Future<ChatMessage> send(String collaborationId, String body, {String? clientMessageId}) async {
     await Future.delayed(const Duration(milliseconds: 300));
     final message = ChatMessage(
       id: 'mock-${_counter++}',
@@ -223,10 +227,6 @@ class MockChatRepository implements ChatRepository {
 }
 
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {
-  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: false);
-  if (useMock) {
-    return MockChatRepository();
-  }
   final chatService = ref.watch(chatServiceProvider);
   final colRepo = ref.watch(collaborationRepositoryProvider);
   final repo = RemoteChatRepository(

@@ -450,65 +450,18 @@ class _OnSetStoryViewerDialogState extends State<OnSetStoryViewerDialog> {
                             ),
                           ],
 
-                          // Overlay Layer 1: Viewfinder Frame Lines
-                          Positioned.fill(
-                            child: CustomPaint(
-                              painter: _ViewfinderOverlayPainter(),
-                            ),
-                          ),
-
-                          // Overlay Layer 2: Center Watermark & Play/Pause State
-                          if (!_isVideo || !_isInitialized || !_videoController!.value.isPlaying)
-                            Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                if (_isVideo && _isInitialized && !_videoController!.value.isPlaying)
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(alpha: 0.6),
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: CineColors.gold, width: 1.5),
-                                    ),
-                                    child: const Icon(Icons.play_arrow_rounded, size: 36, color: CineColors.gold),
-                                  )
-                                else
-                                  const Icon(Icons.videocam_rounded, size: 44, color: CineColors.gold),
-                                const SizedBox(height: 10),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.6),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Text(
-                                    'SOUNDSTAGE LIVE FEED',
-                                    style: TextStyle(
-                                      color: CineColors.goldLight,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 1.5,
-                                    ),
-                                  ),
+                          // Play/Pause indicator for paused video stories only (clean display of user media)
+                          if (_isVideo && _isInitialized && !_videoController!.value.isPlaying)
+                            Center(
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: CineColors.gold, width: 1.5),
                                 ),
-                                const SizedBox(height: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.withValues(alpha: 0.85),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Text(
-                                    '● REC  24 FPS  ISO 800  5600K',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      fontFamily: 'monospace',
-                                    ),
-                                  ),
-                                ),
-                              ],
+                                child: const Icon(Icons.play_arrow_rounded, size: 36, color: CineColors.gold),
+                              ),
                             ),
 
                           // Overlay Layer 3: Bottom Caption
@@ -578,41 +531,4 @@ class _OnSetStoryViewerDialogState extends State<OnSetStoryViewerDialog> {
       ),
     );
   }
-}
-
-class _ViewfinderOverlayPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = CineColors.gold.withValues(alpha: 0.4)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-
-    const cornerLength = 20.0;
-    const padding = 16.0;
-
-    // Top-left
-    canvas.drawLine(const Offset(padding, padding), const Offset(padding + cornerLength, padding), paint);
-    canvas.drawLine(const Offset(padding, padding), const Offset(padding, padding + cornerLength), paint);
-
-    // Top-right
-    canvas.drawLine(Offset(size.width - padding, padding), Offset(size.width - padding - cornerLength, padding), paint);
-    canvas.drawLine(Offset(size.width - padding, padding), Offset(size.width - padding, padding + cornerLength), paint);
-
-    // Bottom-left
-    canvas.drawLine(Offset(padding, size.height - padding), Offset(padding + cornerLength, size.height - padding), paint);
-    canvas.drawLine(Offset(padding, size.height - padding), Offset(padding, size.height - padding - cornerLength), paint);
-
-    // Bottom-right
-    canvas.drawLine(Offset(size.width - padding, size.height - padding), Offset(size.width - padding - cornerLength, size.height - padding), paint);
-    canvas.drawLine(Offset(size.width - padding, size.height - padding), Offset(size.width - padding, size.height - padding - cornerLength), paint);
-
-    // Center crosshair
-    final center = Offset(size.width / 2, size.height / 2);
-    canvas.drawLine(Offset(center.dx - 10, center.dy), Offset(center.dx + 10, center.dy), paint);
-    canvas.drawLine(Offset(center.dx, center.dy - 10), Offset(center.dx, center.dy + 10), paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

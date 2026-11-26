@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/state/app_state.dart';
+import '../chat/chat_sheet.dart';
 
 class NotificationsSheet extends StatefulWidget {
   final CineAppState appState;
@@ -18,8 +19,9 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
   @override
   void initState() {
     super.initState();
-    // Refresh notifications from FastAPI when the sheet opens
+    // Refresh notifications and user collaborations when the sheet opens
     widget.appState.loadNotifications(forceRefresh: true);
+    widget.appState.loadMyCollaborations();
   }
 
   IconData _iconForType(String type) {
@@ -317,6 +319,70 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
     );
   }
 
+  Future<void> _handleAcceptCollaboration(CineNotification notif) async {
+    final collabId = notif.collaborationId;
+    if (collabId == null) return;
+    try {
+      await widget.appState.acceptCollaboration(collabId);
+      await widget.appState.markNotificationAsRead(notif.id);
+      if (mounted) {
+        setState(() {});
+      }
+      if (mounted && context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: CineColors.surfaceElevated,
+            duration: Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              'Collaboration accepted! You can now chat.',
+              style: TextStyle(color: CineColors.gold),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: CineColors.surfaceElevated,
+            content: Text('Could not accept invitation: $e', style: const TextStyle(color: CineColors.error)),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleRejectCollaboration(CineNotification notif) async {
+    final collabId = notif.collaborationId;
+    if (collabId == null) return;
+    try {
+      await widget.appState.rejectCollaboration(collabId);
+      await widget.appState.markNotificationAsRead(notif.id);
+      if (mounted) {
+        setState(() {});
+      }
+      if (mounted && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: CineColors.surfaceElevated,
+            content: Text('Collaboration invitation declined.', style: TextStyle(color: CineColors.textMuted)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: CineColors.surfaceElevated,
+            content: Text('Could not decline invitation: $e', style: const TextStyle(color: CineColors.error)),
+          ),
+        );
+      }
+    }
+  }
+
   Widget _notificationTile(CineNotification notif) {
     final color = _colorForType(notif.type);
 
@@ -415,8 +481,8 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    notif.description,
-                    maxLines: 2,
+                    notif.cleanDescription,
+                    maxLines: notif.collaborationId != null ? 4 : 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 12,
@@ -424,6 +490,103 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
                       height: 1.35,
                     ),
                   ),
+                  if (notif.collaborationId != null) ...[
+                    const SizedBox(height: 10),
+                    Builder(
+                      builder: (context) {
+                        final isAccepted = widget.appState.acceptedCollabIds.contains(notif.collaborationId);
+                        final isDeclined = widget.appState.declinedCollabIds.contains(notif.collaborationId);
+
+                        if (isAccepted) {
+                          return Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFF10B981)),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF10B981)),
+                                    SizedBox(width: 4),
+                                    Text('Accepted', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  showModalBottomSheet(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    builder: (_) => ChatSheet(appState: widget.appState),
+                                  );
+                                },
+                                icon: const Icon(Icons.chat_bubble_outline_rounded, size: 14),
+                                label: const Text('Message', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: CineColors.gold,
+                                  foregroundColor: Colors.black,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+
+                        if (isDeclined) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: CineColors.border),
+                            ),
+                            child: const Text('Declined', style: TextStyle(fontSize: 11.5, color: CineColors.textMuted)),
+                          );
+                        }
+
+                        return Row(
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: () => _handleAcceptCollaboration(notif),
+                              icon: const Icon(Icons.check_rounded, size: 14),
+                              label: const Text(
+                                'Accept Invite',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: CineColors.gold,
+                                foregroundColor: Colors.black,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton(
+                              onPressed: () => _handleRejectCollaboration(notif),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: CineColors.textMuted,
+                                side: const BorderSide(color: CineColors.border),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text('Decline', style: TextStyle(fontSize: 11.5)),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),

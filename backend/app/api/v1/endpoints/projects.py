@@ -46,6 +46,22 @@ async def create_project(
     db.add(project)
     await db.commit()
     await db.refresh(project)
+
+    # Automatically create an open casting/crew opportunity for this project so talent can immediately discover and apply in Opportunities
+    auto_opp = Opportunity(
+        project_id=project.id,
+        production_house_id=house.id,
+        title=f"{project.title} - Casting & Crew Call",
+        role_type="Open Role / Talent & Crew",
+        requirements=project.description or f"Open requirements for {project.title}.",
+        location=house.location or "Pan-India",
+        compensation="Scale / Industry Standard",
+        deadline=project.start_date,
+        status="open",
+    )
+    db.add(auto_opp)
+    await db.commit()
+
     return project
 
 

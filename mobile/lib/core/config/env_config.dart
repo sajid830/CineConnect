@@ -114,16 +114,22 @@ class EnvConfig {
   /// Factory to construct configuration from compile-time environment variables.
   static EnvConfig fromEnvironment() {
     const rawEnv = String.fromEnvironment('APP_ENV', defaultValue: 'local');
-    const rawApiUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+    const rawApiUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'https://fool-buzz-dainty.ngrok-free.dev');
     const appName = String.fromEnvironment('APP_NAME', defaultValue: 'CineConnect');
 
-    // Read SUPABASE_URL without any hardcoded fallback
-    const rawSupabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: '');
+    // Read SUPABASE_URL with persistent production project fallback
+    const rawSupabaseUrl = String.fromEnvironment(
+      'SUPABASE_URL',
+      defaultValue: 'https://fozvejaohiyvohfbggdy.supabase.co',
+    );
 
     // Read SUPABASE_PUBLISHABLE_KEY with fallback to legacy SUPABASE_ANON_KEY define
     const rawSupabaseKey = String.fromEnvironment(
       'SUPABASE_PUBLISHABLE_KEY',
-      defaultValue: String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: ''),
+      defaultValue: String.fromEnvironment(
+        'SUPABASE_ANON_KEY',
+        defaultValue: 'sb_publishable_7udkEURRfo8B4aNUmWbJdA_vGcCvcXw',
+      ),
     );
 
     final environment = _parseEnvironment(rawEnv);

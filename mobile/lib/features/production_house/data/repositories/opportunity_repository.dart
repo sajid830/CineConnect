@@ -27,29 +27,10 @@ abstract class OpportunityRepository {
 }
 
 class MockOpportunityRepository implements OpportunityRepository {
-  final List<Opportunity> _items = [
-    Opportunity(
-      id: 'o1',
-      projectId: 'p1',
-      title: 'Lead Actress (25-32)',
-      requirements:
-          'Fluent in Hindi and English. Action sequences experience preferred.',
-      deadline: DateTime(2026, 12, 20),
-      status: OpportunityStatus.open,
-    ),
-    Opportunity(
-      id: 'o2',
-      projectId: 'p2',
-      title: 'Cinematographer',
-      requirements: '5+ years of experience. Showreel required.',
-      deadline: DateTime(2027, 1, 5),
-      status: OpportunityStatus.open,
-    ),
-  ];
+  final List<Opportunity> _items = [];
 
   @override
   Future<List<Opportunity>> getOpportunities() async {
-    await Future.delayed(const Duration(milliseconds: 800));
     return List.of(_items);
   }
 
@@ -220,6 +201,5 @@ class RemoteOpportunityRepository implements OpportunityRepository {
 }
 
 final opportunityRepositoryProvider = Provider<OpportunityRepository>((ref) {
-  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: false);
-  return useMock ? MockOpportunityRepository() : RemoteOpportunityRepository();
+  return RemoteOpportunityRepository();
 });

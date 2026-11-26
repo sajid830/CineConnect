@@ -90,6 +90,20 @@ class MediaUploadService {
     );
   }
 
+  /// Helper to route localhost storage endpoints to host machine IP when running on mobile devices.
+  Uri _resolveClientStorageUri(String uploadUrl) {
+    var uri = Uri.parse(uploadUrl);
+    final apiUri = Uri.tryParse(ApiEndpoints.baseUrl);
+    if (apiUri != null && apiUri.host.isNotEmpty) {
+      final isLocal = uri.host == 'localhost' || uri.host == '127.0.0.1';
+      final isRemoteApi = apiUri.host != 'localhost' && apiUri.host != '127.0.0.1';
+      if (isLocal && isRemoteApi) {
+        uri = uri.replace(host: apiUri.host);
+      }
+    }
+    return uri;
+  }
+
   /// Streams byte chunks directly to MinIO/S3 using the presigned PUT URL with exact Content-Length.
   ///
   /// Memory & Framing Guarantees:
@@ -106,10 +120,15 @@ class MediaUploadService {
   }) async {
     final cleanClient = http.Client();
     try {
-      final uri = Uri.parse(uploadUrl);
+      final originalUri = Uri.parse(uploadUrl);
+      final uri = _resolveClientStorageUri(uploadUrl);
       final request = http.StreamedRequest('PUT', uri);
       request.contentLength = length;
       request.headers['Content-Type'] = contentType;
+      request.headers['ngrok-skip-browser-warning'] = 'true';
+      if (originalUri.host != uri.host) {
+        request.headers['Host'] = '${originalUri.host}:${originalUri.port}';
+      }
 
       // Pipe the stream to the request sink and initiate send concurrently
       // Cast ensures Stream<Uint8List> from image_picker / cross_file satisfies StreamConsumer<List<int>>
@@ -236,12 +255,16 @@ class MediaUploadService {
   }) async {
     final cleanClient = http.Client();
     try {
-      final uri = Uri.parse(uploadUrl);
+      final originalUri = Uri.parse(uploadUrl);
+      final uri = _resolveClientStorageUri(uploadUrl);
+      final headers = <String, String>{
+        'Content-Type': contentType,
+        if (originalUri.host != uri.host) 'Host': '${originalUri.host}:${originalUri.port}',
+      };
+
       final response = await cleanClient.put(
         uri,
-        headers: {
-          'Content-Type': contentType,
-        },
+        headers: headers,
         body: bytes,
       );
 

@@ -86,7 +86,11 @@ def get_internal_s3_client():
     )
 
 
-def get_public_s3_client():
+# Backward compatibility alias
+get_s3_client = get_internal_s3_client
+
+
+def get_public_s3_client(custom_endpoint: Optional[str] = None):
     """Returns a boto3 S3 client configured with client-reachable endpoint for SigV4 presigned URLs.
 
     Generating presigned URLs signs the 'Host' header matching this endpoint_url,
@@ -94,7 +98,7 @@ def get_public_s3_client():
     """
     return boto3.client(
         "s3",
-        endpoint_url=settings.public_storage_endpoint,
+        endpoint_url=custom_endpoint or settings.public_storage_endpoint,
         aws_access_key_id=settings.MINIO_ACCESS_KEY,
         aws_secret_access_key=settings.MINIO_SECRET_KEY,
         region_name=settings.MINIO_REGION,
@@ -173,6 +177,7 @@ def generate_presigned_upload_url(
     purpose: str = "public",
     bucket_name: Optional[str] = None,
     expires_in: int = 3600,
+    client_host: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Generates an AWS SigV4 presigned upload URL for direct client-to-storage PUT uploads.
 
@@ -234,20 +239,31 @@ def generate_presigned_upload_url(
     file_uuid = uuid.uuid4()
     file_key = f"media/{user_id}/{file_uuid}/{clean_name}"
 
-    # 7. Generate SigV4 presigned PUT URL via boto3
-    s3_public = get_public_s3_client()
-    upload_url = s3_public.generate_presigned_url(
-        ClientMethod="put_object",
-        Params={
-            "Bucket": target_bucket,
-            "Key": file_key,
-            "ContentType": content_type,
-        },
-        ExpiresIn=expires_in,
-    )
+    # 7. Generate upload URL
+    if client_host and ("ngrok" in client_host or "trycloudflare" in client_host):
+        scheme = "https"
+        base_api = f"{scheme}://{client_host}"
+        upload_url = f"{base_api}/api/v1/media/upload/{target_bucket}/{file_key}"
+        public_url = f"{base_api}/api/v1/media/file/{target_bucket}/{file_key}"
+    else:
+        effective_endpoint = settings.public_storage_endpoint
+        if client_host and client_host not in ("localhost", "127.0.0.1", "testserver") and not getattr(settings, "MINIO_PUBLIC_ENDPOINT", None):
+            parsed_pub = urlparse(settings.public_storage_endpoint)
+            port_part = f":{parsed_pub.port}" if parsed_pub.port else ":9000"
+            scheme = parsed_pub.scheme or ("https" if settings.MINIO_USE_SSL else "http")
+            effective_endpoint = f"{scheme}://{client_host}{port_part}"
 
-    # 8. Construct canonical URL (for public access or asset reference)
-    public_url = f"{settings.public_storage_endpoint}/{target_bucket}/{file_key}"
+        s3_public = get_public_s3_client(custom_endpoint=effective_endpoint)
+        upload_url = s3_public.generate_presigned_url(
+            ClientMethod="put_object",
+            Params={
+                "Bucket": target_bucket,
+                "Key": file_key,
+                "ContentType": content_type,
+            },
+            ExpiresIn=expires_in,
+        )
+        public_url = f"{effective_endpoint}/{target_bucket}/{file_key}"
 
     return {
         "upload_url": upload_url,
@@ -372,7 +388,14 @@ def parse_storage_url(url_or_key: Optional[str]) -> Tuple[Optional[str], Optiona
             return None, None, False
 
         trusted_netlocs = get_trusted_storage_netlocs()
-        if parsed.netloc.lower() not in trusted_netlocs:
+        netloc_lower = parsed.netloc.lower()
+        is_trusted = netloc_lower in trusted_netlocs
+        if not is_trusted:
+            # Also allow if port matches configured MinIO storage port (e.g. 9000)
+            storage_port = urlparse(settings.public_storage_endpoint).port or 9000
+            if parsed.port == storage_port:
+                is_trusted = True
+        if not is_trusted:
             # Arbitrary external URL (Vimeo, YouTube, foreign CDN, or fake host in path/query)
             return None, None, False
 
@@ -381,9 +404,16 @@ def parse_storage_url(url_or_key: Optional[str]) -> Tuple[Optional[str], Optiona
         if not path_segments:
             return None, None, True
 
-        # Check if "media" is in path segments
-        if "media" in path_segments:
-            media_idx = path_segments.index("media")
+        # Check if proxy path style: /api/v1/media/(file|upload)/{bucket}/{file_key:path}
+        if len(path_segments) >= 5 and path_segments[0] == "api" and path_segments[1] == "v1" and path_segments[2] == "media" and path_segments[3] in ("file", "upload"):
+            bucket = path_segments[4]
+            file_key = "/".join(path_segments[5:])
+            return file_key, bucket, True
+
+        # Find the last occurrence of "media" that represents the storage key root
+        media_indices = [i for i, seg in enumerate(path_segments) if seg == "media"]
+        if media_indices:
+            media_idx = media_indices[-1]
             file_key = "/".join(path_segments[media_idx:])
             bucket = path_segments[media_idx - 1] if media_idx > 0 else None
             return file_key, bucket, True

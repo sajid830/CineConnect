@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cineconnect/core/network/api_client.dart';
 import 'package:cineconnect/core/utils/formatters.dart';
 import 'package:cineconnect/features/production_house/data/models/project.dart';
 import 'package:cineconnect/shared/widgets/empty_state.dart';
@@ -94,7 +95,9 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _isEdit ? 'Could not save changes' : 'Could not create project',
+              e is ApiException && e.message.isNotEmpty
+                  ? e.message
+                  : (_isEdit ? 'Could not save changes' : 'Could not create project'),
             ),
           ),
         );

@@ -2,6 +2,7 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, or_, and_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -79,6 +80,29 @@ async def list_my_opportunities(
     return result.scalars().all()
 
 
+def _to_opp_response(opp: Opportunity) -> OpportunityResponse:
+    studio_name = opp.production_house.company_name if opp.production_house else None
+    studio_banner_logo = opp.production_house.logo_url if opp.production_house else None
+    project_title = opp.project.title if opp.project else opp.title
+    return OpportunityResponse(
+        id=opp.id,
+        project_id=opp.project_id,
+        production_house_id=opp.production_house_id,
+        title=opp.title,
+        role_type=opp.role_type,
+        requirements=opp.requirements,
+        location=opp.location,
+        compensation=opp.compensation,
+        deadline=opp.deadline,
+        status=opp.status,
+        studio_name=studio_name,
+        studio_banner_logo=studio_banner_logo,
+        project_title=project_title,
+        created_at=opp.created_at,
+        updated_at=opp.updated_at,
+    )
+
+
 @router.get("/search", response_model=List[OpportunityResponse])
 async def search_opportunities(
     q: Optional[str] = Query(None, description="Search term for title, role_type, or requirements"),
@@ -90,7 +114,10 @@ async def search_opportunities(
     db: AsyncSession = Depends(get_db),
 ):
     """Search opportunities by title, role_type, requirements, or location."""
-    stmt = select(Opportunity)
+    stmt = select(Opportunity).options(
+        selectinload(Opportunity.project),
+        selectinload(Opportunity.production_house),
+    )
     conditions = []
     if q:
         search_pattern = f"%{q.strip()}%"
@@ -113,7 +140,8 @@ async def search_opportunities(
 
     stmt = stmt.order_by(Opportunity.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
-    return result.scalars().all()
+    opps = result.scalars().all()
+    return [_to_opp_response(o) for o in opps]
 
 
 @router.get("/", response_model=List[OpportunityResponse])
@@ -126,7 +154,36 @@ async def list_opportunities(
     db: AsyncSession = Depends(get_db),
 ):
     """List opportunities with optional filters and pagination."""
-    stmt = select(Opportunity)
+    # Ensure all projects created by production houses automatically have an open casting/crew opportunity
+    orphan_stmt = (
+        select(Project)
+        .outerjoin(Opportunity, Opportunity.project_id == Project.id)
+        .where(Opportunity.id == None)
+    )
+    orphan_res = await db.execute(orphan_stmt)
+    orphan_projects = orphan_res.scalars().all()
+    if orphan_projects:
+        for p in orphan_projects:
+            ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == p.production_house_id))
+            ph_obj = ph_res.scalar_one_or_none()
+            new_opp = Opportunity(
+                project_id=p.id,
+                production_house_id=p.production_house_id,
+                title=f"{p.title} - Casting & Crew Call",
+                role_type="Open Role / Talent & Crew",
+                requirements=p.description or f"Open requirements for project {p.title}.",
+                location=ph_obj.location if ph_obj and ph_obj.location else "Pan-India",
+                compensation="Scale / Industry Standard",
+                deadline=p.start_date,
+                status="open",
+            )
+            db.add(new_opp)
+        await db.commit()
+
+    stmt = select(Opportunity).options(
+        selectinload(Opportunity.project),
+        selectinload(Opportunity.production_house),
+    )
     conditions = []
     if role_type:
         conditions.append(Opportunity.role_type.ilike(f"%{role_type.strip()}%"))
@@ -140,7 +197,8 @@ async def list_opportunities(
 
     stmt = stmt.order_by(Opportunity.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
-    return result.scalars().all()
+    opps = result.scalars().all()
+    return [_to_opp_response(o) for o in opps]
 
 
 @router.get("/{opportunity_id}", response_model=OpportunityResponse)
@@ -149,11 +207,19 @@ async def get_opportunity(
     db: AsyncSession = Depends(get_db),
 ):
     """Get single opportunity by ID."""
-    result = await db.execute(select(Opportunity).where(Opportunity.id == opportunity_id))
+    stmt = (
+        select(Opportunity)
+        .options(
+            selectinload(Opportunity.project),
+            selectinload(Opportunity.production_house),
+        )
+        .where(Opportunity.id == opportunity_id)
+    )
+    result = await db.execute(stmt)
     opp = result.scalar_one_or_none()
     if not opp:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found")
-    return opp
+    return _to_opp_response(opp)
 
 
 @router.put("/{opportunity_id}", response_model=OpportunityResponse)

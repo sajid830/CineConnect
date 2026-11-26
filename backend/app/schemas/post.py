@@ -6,7 +6,7 @@ from app.schemas.user import TalentSummaryResponse
 
 
 class PostBase(BaseModel):
-    caption: str = Field(..., json_schema_extra={"example": "Just wrapped up Day 14 on our indie thriller feature film!"})
+    caption: Optional[str] = Field("", json_schema_extra={"example": "Just wrapped up Day 14 on our indie thriller feature film!"})
     media_url: Optional[str] = Field(None, json_schema_extra={"example": "https://cdn.cineconnect.com/posts/bts-day14.jpg"})
     video_slate_title: Optional[str] = Field(None, json_schema_extra={"example": "SCENE 84A / TAKE 3 [ANAMORPHIC MASTER 2.39:1]"})
     smpte_timecode: Optional[str] = Field(None, json_schema_extra={"example": "TC 01:24:19:18"})

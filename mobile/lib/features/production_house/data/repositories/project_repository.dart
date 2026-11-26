@@ -25,33 +25,10 @@ abstract class ProjectRepository {
 }
 
 class MockProjectRepository implements ProjectRepository {
-  final List<Project> _projects = [
-    Project(
-      id: 'p1',
-      title: 'Midnight Express',
-      description: 'A thriller shot across three cities. Casting leads and crew.',
-      status: ProjectStatus.ongoing,
-      startDate: DateTime(2026, 9, 1),
-    ),
-    Project(
-      id: 'p2',
-      title: 'Monsoon Diaries',
-      description: 'A romantic drama set in the Western Ghats.',
-      status: ProjectStatus.upcoming,
-      startDate: DateTime(2027, 1, 15),
-    ),
-    Project(
-      id: 'p3',
-      title: 'The Last Reel',
-      description: 'A short film about an old projectionist.',
-      status: ProjectStatus.completed,
-      startDate: DateTime(2026, 3, 10),
-    ),
-  ];
+  final List<Project> _projects = [];
 
   @override
   Future<List<Project>> getProjects() async {
-    await Future.delayed(const Duration(milliseconds: 800));
     return List.of(_projects);
   }
 
@@ -194,6 +171,5 @@ class RemoteProjectRepository implements ProjectRepository {
 }
 
 final projectRepositoryProvider = Provider<ProjectRepository>((ref) {
-  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: false);
-  return useMock ? MockProjectRepository() : RemoteProjectRepository();
+  return RemoteProjectRepository();
 });

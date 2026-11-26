@@ -24,10 +24,14 @@ class RemoteNotificationRepository implements NotificationRepository {
     final res = await _client.get(ApiEndpoints.notifications, queryParams: {'limit': 50});
     if (res is List) {
       final Map<String, AppNotification> deduplicated = {};
-      for (final item in res.whereType<Map<String, dynamic>>()) {
-        final notif = AppNotification.fromJson(item);
-        if (notif.id.isNotEmpty) {
-          deduplicated[notif.id] = notif;
+      for (final item in res) {
+        if (item is Map) {
+          try {
+            final notif = AppNotification.fromJson(Map<String, dynamic>.from(item));
+            if (notif.id.isNotEmpty) {
+              deduplicated[notif.id] = notif;
+            }
+          } catch (_) {}
         }
       }
       return deduplicated.values.toList();
@@ -47,64 +51,21 @@ class RemoteNotificationRepository implements NotificationRepository {
 
   @override
   Future<int> getUnreadCount() async {
-    final res = await _client.get(ApiEndpoints.unreadNotificationCount);
-    if (res is Map<String, dynamic> && res['unread_count'] is num) {
-      return (res['unread_count'] as num).toInt();
-    }
-    throw ApiException(
-      statusCode: 500,
-      message: 'Invalid response from unread-count endpoint',
-    );
+    try {
+      final res = await _client.get(ApiEndpoints.unreadNotificationCount);
+      if (res is Map && res['unread_count'] is num) {
+        return (res['unread_count'] as num).toInt();
+      }
+    } catch (_) {}
+    return 0;
   }
 }
 
 class MockNotificationRepository implements NotificationRepository {
-  List<AppNotification> _items = [
-    AppNotification(
-      id: 'n1',
-      kind: NotificationKind.application,
-      title: 'New application',
-      body: 'Rohan Iyer applied for Cinematographer.',
-      createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-      isRead: false,
-    ),
-    AppNotification(
-      id: 'n2',
-      kind: NotificationKind.collaboration,
-      title: 'Invitation accepted',
-      body: 'Rohan Iyer joined Midnight Express.',
-      createdAt: DateTime.now().subtract(const Duration(days: 1)),
-      isRead: false,
-    ),
-    AppNotification(
-      id: 'n3',
-      kind: NotificationKind.message,
-      title: 'New message',
-      body: 'Ananya Das: Thank you! Happy to be on board.',
-      createdAt: DateTime.now().subtract(const Duration(days: 2)),
-      isRead: false,
-    ),
-    AppNotification(
-      id: 'n4',
-      kind: NotificationKind.collaboration,
-      title: 'Invitation declined',
-      body: 'Vikram Rao declined your invitation to Midnight Express.',
-      createdAt: DateTime.now().subtract(const Duration(days: 3)),
-      isRead: true,
-    ),
-    AppNotification(
-      id: 'n5',
-      kind: NotificationKind.general,
-      title: 'Company verified',
-      body: 'Your production house is now verified.',
-      createdAt: DateTime.now().subtract(const Duration(days: 10)),
-      isRead: true,
-    ),
-  ];
+  List<AppNotification> _items = [];
 
   @override
   Future<List<AppNotification>> getNotifications() async {
-    await Future.delayed(const Duration(milliseconds: 600));
     return List.of(_items);
   }
 
@@ -130,6 +91,5 @@ class MockNotificationRepository implements NotificationRepository {
 }
 
 final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
-  const useMock = bool.fromEnvironment('USE_MOCK_PH', defaultValue: false);
-  return useMock ? MockNotificationRepository() : RemoteNotificationRepository();
+  return RemoteNotificationRepository();
 });

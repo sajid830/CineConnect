@@ -76,6 +76,10 @@ services:
     container_name: cineconnect-backend
     restart: unless-stopped
 
+    volumes:
+      - ../backend/app:/app/app
+      - ../backend/alembic:/app/alembic
+
     depends_on:
       postgres:
         condition: service_healthy

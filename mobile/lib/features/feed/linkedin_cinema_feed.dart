@@ -47,55 +47,7 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
   }
 
   List<Map<String, dynamic>> _getCommentsForPost(CineFeedPost post) {
-    return _postComments.putIfAbsent(post.id, () {
-      if (post.id == 'post-1') {
-        return [
-          {
-            'author': 'Liam Rossi',
-            'avatar': 'LR',
-            'time': '2h ago',
-            'text': 'The Cooke anamorphic roll-off in the deep shadows is cinematic perfection. Brilliant work Maya!',
-            'likes': 14,
-            'isLiked': false,
-          },
-          {
-            'author': 'Elena Vance',
-            'avatar': 'EV',
-            'time': '1h ago',
-            'text': 'Stunning frame composition! That 2.39:1 master shot is phenomenal.',
-            'likes': 8,
-            'isLiked': false,
-          },
-          {
-            'author': 'Alex Chen',
-            'avatar': 'AC',
-            'time': '35m ago',
-            'text': 'Tremendous discipline on this 38-night schedule! Pure dedication 🔥',
-            'likes': 5,
-            'isLiked': false,
-          },
-        ];
-      } else {
-        return [
-          {
-            'author': 'Maya Ray',
-            'avatar': 'MR',
-            'time': '4h ago',
-            'text': 'Pure cinema! The one-take stunt was unbelievable Alex 👏',
-            'likes': 12,
-            'isLiked': false,
-          },
-          {
-            'author': 'Karthik Raja',
-            'avatar': 'KR',
-            'time': '3h ago',
-            'text': 'Color grade and shadow detail look crisp. Which camera package?',
-            'likes': 6,
-            'isLiked': false,
-          },
-        ];
-      }
-    });
+    return _postComments.putIfAbsent(post.id, () => []);
   }
 
   void _openCreatorProfile(CineFeedPost post) {
