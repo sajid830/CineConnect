@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
@@ -18,15 +19,30 @@ class _ChatSheetState extends State<ChatSheet> {
   final TextEditingController _messageController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     widget.appState.initChatService();
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
+      if (!mounted) return;
+      if (_selectedThreadId != null) {
+        widget.appState.loadThreadMessages(_selectedThreadId!);
+      } else {
+        widget.appState.loadConversations();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     widget.appState.clearActiveThread();
     _messageController.dispose();
     _searchController.dispose();

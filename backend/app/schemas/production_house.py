@@ -28,5 +28,8 @@ class ProductionHouseResponse(ProductionHouseBase):
     user_id: UUID
     email: Optional[str] = None
     is_verified: bool = False
+    followers_count: int = 0
+    following_count: int = 0
+    is_following: Optional[bool] = False
     created_at: datetime
     updated_at: datetime

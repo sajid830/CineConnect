@@ -9,29 +9,40 @@ enum OpportunityStatus {
 
 class Opportunity {
   final String id;
-  final String projectId;
+  final String? projectId;
   final String title;
   final String requirements;
+  String get description => requirements;
   final DateTime deadline;
   final OpportunityStatus status;
   final String? productionHouseId;
   final String? roleType;
+  final String? purpose;
+  final int requiredMembers;
+  final DateTime? workStartDate;
+  final String? experience;
   final String? location;
   final String? compensation;
+  final int applicationsCount;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
   const Opportunity({
     required this.id,
-    required this.projectId,
+    this.projectId,
     required this.title,
     required this.requirements,
     required this.deadline,
     required this.status,
     this.productionHouseId,
     this.roleType,
+    this.purpose,
+    this.requiredMembers = 1,
+    this.workStartDate,
+    this.experience,
     this.location,
     this.compensation,
+    this.applicationsCount = 0,
     this.createdAt,
     this.updatedAt,
   });
@@ -61,8 +72,8 @@ class Opportunity {
 
   factory Opportunity.fromJson(Map<String, dynamic> json) {
     final rawId = json['id']?.toString() ?? '';
-    final rawProjectId = json['project_id']?.toString() ?? '';
-    final title = json['title']?.toString() ?? 'Untitled Casting Call';
+    final rawProjectId = json['project_id']?.toString();
+    final title = json['title']?.toString() ?? 'Job Requirement';
     final requirements = json['requirements']?.toString() ?? '';
 
     DateTime deadline;
@@ -74,6 +85,21 @@ class Opportunity {
     }
 
     final status = parseStatus(json['status']?.toString());
+
+    DateTime? workStart;
+    if (json['work_start_date'] != null && json['work_start_date'].toString().isNotEmpty) {
+      workStart = DateTime.tryParse(json['work_start_date'].toString());
+    }
+
+    int reqMembers = 1;
+    if (json['required_members'] != null) {
+      reqMembers = int.tryParse(json['required_members'].toString()) ?? 1;
+    }
+
+    int appsCount = 0;
+    if (json['applications_count'] != null) {
+      appsCount = int.tryParse(json['applications_count'].toString()) ?? 0;
+    }
 
     DateTime? createdAt;
     if (json['created_at'] != null && json['created_at'].toString().isNotEmpty) {
@@ -94,8 +120,13 @@ class Opportunity {
       status: status,
       productionHouseId: json['production_house_id']?.toString(),
       roleType: json['role_type']?.toString(),
+      purpose: json['purpose']?.toString(),
+      requiredMembers: reqMembers,
+      workStartDate: workStart,
+      experience: json['experience']?.toString(),
       location: json['location']?.toString(),
       compensation: json['compensation']?.toString(),
+      applicationsCount: appsCount,
       createdAt: createdAt,
       updatedAt: updatedAt,
     );
@@ -110,8 +141,13 @@ class Opportunity {
     OpportunityStatus? status,
     String? productionHouseId,
     String? roleType,
+    String? purpose,
+    int? requiredMembers,
+    DateTime? workStartDate,
+    String? experience,
     String? location,
     String? compensation,
+    int? applicationsCount,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -124,8 +160,13 @@ class Opportunity {
       status: status ?? this.status,
       productionHouseId: productionHouseId ?? this.productionHouseId,
       roleType: roleType ?? this.roleType,
+      purpose: purpose ?? this.purpose,
+      requiredMembers: requiredMembers ?? this.requiredMembers,
+      workStartDate: workStartDate ?? this.workStartDate,
+      experience: experience ?? this.experience,
       location: location ?? this.location,
       compensation: compensation ?? this.compensation,
+      applicationsCount: applicationsCount ?? this.applicationsCount,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

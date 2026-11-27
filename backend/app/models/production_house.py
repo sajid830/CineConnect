@@ -75,6 +75,7 @@ class Project(Base):
     start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     budget: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    project_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -95,4 +96,7 @@ class Project(Base):
     )
     collaborations: Mapped[List["Collaboration"]] = relationship(
         "Collaboration", back_populates="project", cascade="all, delete-orphan"
+    )
+    applications: Mapped[List["Application"]] = relationship(
+        "Application", back_populates="project", cascade="all, delete-orphan"
     )

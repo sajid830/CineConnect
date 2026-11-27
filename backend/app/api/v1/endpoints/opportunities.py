@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_, and_, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +29,7 @@ async def create_opportunity(
     current_user: User = Depends(require_production_house),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new casting/job opportunity (Production House only)."""
+    """Create a new job opportunity (Production House only)."""
     # 1. Fetch user's production house
     res = await db.execute(select(ProductionHouse).where(ProductionHouse.user_id == current_user.id))
     ph = res.scalar_one_or_none()
@@ -39,19 +39,21 @@ async def create_opportunity(
             detail="Production house profile not found. Please create your production house profile first.",
         )
 
-    # 2. Verify project exists and belongs to this production house
-    proj_res = await db.execute(
-        select(Project).where(
-            Project.id == opp_in.project_id,
-            Project.production_house_id == ph.id,
+    # 2. If project_id provided, verify project exists and belongs to this production house
+    project = None
+    if opp_in.project_id:
+        proj_res = await db.execute(
+            select(Project).where(
+                Project.id == opp_in.project_id,
+                Project.production_house_id == ph.id,
+            )
         )
-    )
-    project = proj_res.scalar_one_or_none()
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found or does not belong to your production house.",
-        )
+        project = proj_res.scalar_one_or_none()
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found or does not belong to your production house.",
+            )
 
     opp_data = opp_in.model_dump()
     opportunity = Opportunity(
@@ -61,7 +63,9 @@ async def create_opportunity(
     db.add(opportunity)
     await db.commit()
     await db.refresh(opportunity)
-    return opportunity
+    opportunity.production_house = ph
+    opportunity.project = project
+    return _to_opp_response(opportunity)
 
 
 @router.get("/my", response_model=List[OpportunityResponse])
@@ -75,21 +79,42 @@ async def list_my_opportunities(
     if not ph:
         return []
 
-    stmt = select(Opportunity).where(Opportunity.production_house_id == ph.id).order_by(Opportunity.created_at.desc())
+    stmt = (
+        select(Opportunity)
+        .where(Opportunity.production_house_id == ph.id)
+        .options(
+            selectinload(Opportunity.project),
+            selectinload(Opportunity.production_house),
+        )
+        .order_by(Opportunity.created_at.desc())
+    )
     result = await db.execute(stmt)
-    return result.scalars().all()
+    opps = result.scalars().all()
+
+    counts_res = await db.execute(
+        select(Application.opportunity_id, func.count(Application.id))
+        .where(Application.opportunity_id.in_([o.id for o in opps]))
+        .group_by(Application.opportunity_id)
+    )
+    counts_map = dict(counts_res.all()) if opps else {}
+
+    return [_to_opp_response(o, counts_map.get(o.id, 0)) for o in opps]
 
 
-def _to_opp_response(opp: Opportunity) -> OpportunityResponse:
-    studio_name = opp.production_house.company_name if opp.production_house else None
-    studio_banner_logo = opp.production_house.logo_url if opp.production_house else None
-    project_title = opp.project.title if opp.project else opp.title
+def _to_opp_response(opp: Opportunity, apps_count: int = 0) -> OpportunityResponse:
+    studio_name = opp.production_house.company_name if "production_house" in opp.__dict__ and opp.production_house else None
+    studio_banner_logo = opp.production_house.logo_url if "production_house" in opp.__dict__ and opp.production_house else None
+    project_title = opp.project.title if "project" in opp.__dict__ and opp.project else opp.title
     return OpportunityResponse(
         id=opp.id,
         project_id=opp.project_id,
         production_house_id=opp.production_house_id,
         title=opp.title,
         role_type=opp.role_type,
+        purpose=opp.purpose,
+        required_members=opp.required_members,
+        work_start_date=opp.work_start_date,
+        experience=opp.experience,
         requirements=opp.requirements,
         location=opp.location,
         compensation=opp.compensation,
@@ -98,6 +123,7 @@ def _to_opp_response(opp: Opportunity) -> OpportunityResponse:
         studio_name=studio_name,
         studio_banner_logo=studio_banner_logo,
         project_title=project_title,
+        applications_count=apps_count,
         created_at=opp.created_at,
         updated_at=opp.updated_at,
     )
@@ -154,32 +180,6 @@ async def list_opportunities(
     db: AsyncSession = Depends(get_db),
 ):
     """List opportunities with optional filters and pagination."""
-    # Ensure all projects created by production houses automatically have an open casting/crew opportunity
-    orphan_stmt = (
-        select(Project)
-        .outerjoin(Opportunity, Opportunity.project_id == Project.id)
-        .where(Opportunity.id == None)
-    )
-    orphan_res = await db.execute(orphan_stmt)
-    orphan_projects = orphan_res.scalars().all()
-    if orphan_projects:
-        for p in orphan_projects:
-            ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == p.production_house_id))
-            ph_obj = ph_res.scalar_one_or_none()
-            new_opp = Opportunity(
-                project_id=p.id,
-                production_house_id=p.production_house_id,
-                title=f"{p.title} - Casting & Crew Call",
-                role_type="Open Role / Talent & Crew",
-                requirements=p.description or f"Open requirements for project {p.title}.",
-                location=ph_obj.location if ph_obj and ph_obj.location else "Pan-India",
-                compensation="Scale / Industry Standard",
-                deadline=p.start_date,
-                status="open",
-            )
-            db.add(new_opp)
-        await db.commit()
-
     stmt = select(Opportunity).options(
         selectinload(Opportunity.project),
         selectinload(Opportunity.production_house),
@@ -345,7 +345,12 @@ async def list_opportunity_applications(
             detail="Opportunity not found or you do not have permission to view its applications.",
         )
 
-    stmt = select(Application).where(Application.opportunity_id == opportunity_id).order_by(Application.created_at.desc())
+    stmt = (
+        select(Application)
+        .where(Application.opportunity_id == opportunity_id)
+        .options(selectinload(Application.talent), selectinload(Application.opportunity))
+        .order_by(Application.created_at.desc())
+    )
     app_result = await db.execute(stmt)
     apps = app_result.scalars().all()
     return [to_ph_application_response(a) for a in apps]

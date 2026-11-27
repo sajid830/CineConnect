@@ -202,6 +202,29 @@ class TalentApiService {
   }
 
   // ==========================================
+  // Public Projects Discovery & Application
+  // ==========================================
+  Future<dynamic> getPublicProjects({int page = 1, int limit = 50}) async {
+    final skip = (page - 1) * limit;
+    return await _apiClient.get(ApiEndpoints.projectsCollection, queryParams: {'skip': skip, 'limit': limit});
+  }
+
+  Future<dynamic> applyToProject({
+    required String projectId,
+    String? coverLetter,
+    String? resumeUrl,
+    String? reelUrl,
+  }) async {
+    final body = {
+      'project_id': projectId,
+      if (coverLetter != null && coverLetter.isNotEmpty) 'cover_letter': coverLetter,
+      if (resumeUrl != null && resumeUrl.isNotEmpty) 'resume_url': resumeUrl,
+      if (reelUrl != null && reelUrl.isNotEmpty) 'reel_url': reelUrl,
+    };
+    return await _apiClient.post(ApiEndpoints.applicationsCollection, body: body);
+  }
+
+  // ==========================================
   // 5. Portfolio & Showreels
   // ==========================================
   Future<dynamic> getMyPortfolio() async {
@@ -406,6 +429,22 @@ class TalentApiService {
 
   Future<dynamic> removeConnection(String connectionId) async {
     return await _apiClient.delete(ApiEndpoints.removeConnection(connectionId));
+  }
+
+  Future<dynamic> toggleFollow(String userId) async {
+    return await _apiClient.post(ApiEndpoints.toggleFollow(userId));
+  }
+
+  Future<dynamic> getUserFollowers(String userId) async {
+    return await _apiClient.get(ApiEndpoints.userFollowers(userId));
+  }
+
+  Future<dynamic> getUserFollowing(String userId) async {
+    return await _apiClient.get(ApiEndpoints.userFollowing(userId));
+  }
+
+  Future<dynamic> getFollowStatus(String userId) async {
+    return await _apiClient.get(ApiEndpoints.followStatus(userId));
   }
 
   // ==========================================

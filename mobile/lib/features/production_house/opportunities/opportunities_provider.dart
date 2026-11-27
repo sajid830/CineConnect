@@ -9,14 +9,24 @@ class OpportunitiesNotifier extends AsyncNotifier<List<Opportunity>> {
   }
 
   Future<void> add({
-    required String projectId,
+    String? projectId,
     required String title,
+    String? roleType,
+    String? purpose,
+    int requiredMembers = 1,
+    DateTime? workStartDate,
+    String? experience,
     required String requirements,
     required DateTime deadline,
   }) async {
     await ref.read(opportunityRepositoryProvider).createOpportunity(
           projectId: projectId,
           title: title,
+          roleType: roleType,
+          purpose: purpose,
+          requiredMembers: requiredMembers,
+          workStartDate: workStartDate,
+          experience: experience,
           requirements: requirements,
           deadline: deadline,
         );
@@ -26,8 +36,13 @@ class OpportunitiesNotifier extends AsyncNotifier<List<Opportunity>> {
 
   Future<void> edit({
     required String id,
-    required String projectId,
+    String? projectId,
     required String title,
+    String? roleType,
+    String? purpose,
+    int? requiredMembers,
+    DateTime? workStartDate,
+    String? experience,
     required String requirements,
     required DateTime deadline,
   }) async {
@@ -35,6 +50,11 @@ class OpportunitiesNotifier extends AsyncNotifier<List<Opportunity>> {
           id: id,
           projectId: projectId,
           title: title,
+          roleType: roleType,
+          purpose: purpose,
+          requiredMembers: requiredMembers,
+          workStartDate: workStartDate,
+          experience: experience,
           requirements: requirements,
           deadline: deadline,
         );

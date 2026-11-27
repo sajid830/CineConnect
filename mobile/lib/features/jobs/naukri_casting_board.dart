@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -5,6 +6,8 @@ import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/services/media_upload_service.dart';
 import '../../core/state/app_state.dart';
+import '../../core/utils/formatters.dart';
+import '../../features/production_house/data/models/project.dart';
 
 class NaukriCastingBoard extends StatefulWidget {
   final CineAppState appState;
@@ -16,13 +19,277 @@ class NaukriCastingBoard extends StatefulWidget {
 }
 
 class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
-  int _activeSubTab = 0; // 0: Suggested for You, 1: Application Status
+  int _activeSubTab = 0; // 0: Jobs, 1: Projects, 2: Application Status
   String _selectedCraftFilter = 'All Crafts';
+  Timer? _liveRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     widget.appState.loadOpportunities(forceRefresh: true);
+    widget.appState.loadPublicProjects(forceRefresh: true);
+
+    // Asynchronously poll every 5 seconds to get newly released applications/opportunities immediately
+    _liveRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      widget.appState.loadOpportunities(forceRefresh: true);
+      widget.appState.loadPublicProjects(forceRefresh: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _liveRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _showProjectApplicationDialog(Project project) {
+    final noteController = TextEditingController();
+    XFile? selectedVideoFile;
+    String? selectedVideoFileName;
+    PlatformFile? selectedResumeFile;
+    String? selectedResumeFileName;
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: !isSubmitting,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF13141C),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: CineColors.gold, width: 1.2),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.movie_filter_rounded, color: CineColors.gold, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Apply: ${project.title}',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Production: ${project.productionHouseName ?? "Production House"} • ${project.projectType ?? "Production"}',
+                  style: const TextStyle(fontSize: 11.5, color: CineColors.goldLight),
+                ),
+                if (project.budget != null && project.budget!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Budget: ${project.budget}',
+                    style: const TextStyle(fontSize: 11.5, color: CineColors.gold, fontWeight: FontWeight.bold),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                const Text(
+                  'Cover Note / Pitch:',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: CineColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: noteController,
+                  maxLines: 3,
+                  style: const TextStyle(fontSize: 12, color: CineColors.textPrimary),
+                  decoration: InputDecoration(
+                    hintText: 'Introduce yourself and describe why you are a great fit for this production...',
+                    hintStyle: const TextStyle(fontSize: 11.5, color: CineColors.textMuted),
+                    filled: true,
+                    fillColor: Colors.black,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: CineColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: CineColors.gold),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                InkWell(
+                  onTap: isSubmitting
+                      ? null
+                      : () async {
+                          try {
+                            final picker = ImagePicker();
+                            final picked = await picker.pickVideo(source: ImageSource.gallery);
+                            if (picked != null) {
+                              setDialogState(() {
+                                selectedVideoFile = picked;
+                                selectedVideoFileName = picked.name;
+                              });
+                            }
+                          } catch (_) {}
+                        },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: CineColors.surfaceElevated,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selectedVideoFile != null ? CineColors.gold : CineColors.border,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          selectedVideoFile != null ? Icons.check_circle : Icons.video_call_outlined,
+                          color: CineColors.gold,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            selectedVideoFileName ?? 'Attach Showreel / Audition Tape (Optional)',
+                            style: const TextStyle(fontSize: 11, color: CineColors.textPrimary),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: isSubmitting
+                      ? null
+                      : () async {
+                          try {
+                            final result = await FilePicker.platform.pickFiles(
+                              type: FileType.custom,
+                              allowedExtensions: ['pdf', 'doc', 'docx'],
+                            );
+                            if (result != null && result.files.isNotEmpty) {
+                              setDialogState(() {
+                                selectedResumeFile = result.files.first;
+                                selectedResumeFileName = result.files.first.name;
+                              });
+                            }
+                          } catch (_) {}
+                        },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: CineColors.surfaceElevated,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selectedResumeFile != null ? CineColors.gold : CineColors.border,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          selectedResumeFile != null ? Icons.check_circle : Icons.picture_as_pdf_outlined,
+                          color: CineColors.gold,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            selectedResumeFileName ?? 'Attach Resume / Credits PDF (Optional)',
+                            style: const TextStyle(fontSize: 11, color: CineColors.textPrimary),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel', style: TextStyle(color: CineColors.textMuted)),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      final navigator = Navigator.of(ctx);
+                      setDialogState(() => isSubmitting = true);
+                      try {
+                        String? uploadedReelUrl;
+                        String? uploadedResumeUrl;
+                        final uploader = MediaUploadService();
+                        if (selectedVideoFile != null) {
+                          final res = await uploader.uploadXFile(
+                            file: selectedVideoFile!,
+                            contentType: 'video/mp4',
+                            purpose: 'private',
+                          );
+                          uploadedReelUrl = res.publicUrl;
+                        }
+                        if (selectedResumeFile != null) {
+                          final res = await uploader.uploadPlatformFile(
+                            file: selectedResumeFile!,
+                            contentType: 'application/pdf',
+                            purpose: 'private',
+                          );
+                          uploadedResumeUrl = res.publicUrl;
+                        }
+
+                        await widget.appState.applyToProject(
+                          project.id,
+                          coverLetter: noteController.text.trim(),
+                          resumeUrl: uploadedResumeUrl,
+                          selfTapeUrl: uploadedReelUrl,
+                        );
+
+                        if (mounted) {
+                          navigator.pop();
+                          messenger.showSnackBar(
+                            const SnackBar(
+                              backgroundColor: CineColors.gold,
+                              content: Text('Application submitted successfully to project!'),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setDialogState(() => isSubmitting = false);
+                        if (mounted) {
+                          messenger.showSnackBar(
+                            SnackBar(
+                              backgroundColor: Colors.red.shade900,
+                              content: Text('Failed to submit application: $e'),
+                            ),
+                          );
+                        }
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CineColors.gold,
+                foregroundColor: Colors.black,
+              ),
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                    )
+                  : const Text('Submit Application', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   List<String> _getAvailableCraftFilters() {
@@ -639,6 +906,8 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
   @override
   Widget build(BuildContext context) {
     final appliedJobs = widget.appState.jobBriefs.where((j) => j.hasUserApplied).toList();
+    final appliedProjects = widget.appState.publicProjects.where((p) => p.hasUserApplied).toList();
+    final totalApplicationsCount = appliedJobs.length + appliedProjects.length;
     final availableCrafts = _getAvailableCraftFilters();
     final effectiveCraftFilter = availableCrafts.contains(_selectedCraftFilter) ? _selectedCraftFilter : 'All Crafts';
 
@@ -655,7 +924,12 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
     return RefreshIndicator(
       color: CineColors.gold,
       backgroundColor: CineColors.surfaceElevated,
-      onRefresh: () => widget.appState.loadOpportunities(forceRefresh: true),
+      onRefresh: () async {
+        await Future.wait([
+          widget.appState.loadOpportunities(forceRefresh: true),
+          widget.appState.loadPublicProjects(forceRefresh: true),
+        ]);
+      },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(top: 10, bottom: 120),
@@ -720,7 +994,7 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                         child: _StatBlock(title: '34', subtitle: 'Director Profile Views'),
                       ),
                       Expanded(
-                        child: _StatBlock(title: '${appliedJobs.length}', subtitle: 'Active Auditions'),
+                        child: _StatBlock(title: '$totalApplicationsCount', subtitle: 'My Applications'),
                       ),
                       const Expanded(
                         child: _StatBlock(title: '96%', subtitle: 'Top Skill Match'),
@@ -755,7 +1029,7 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                 ),
               ),
 
-          // Sub-Tab Segment (Open Calls vs My Auditions Tracker)
+          // Sub-Tab Segment (Jobs vs Projects vs Applications)
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
             padding: const EdgeInsets.all(4),
@@ -783,14 +1057,14 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.auto_awesome_rounded,
+                            Icons.work_outline,
                             size: 14,
                             color: _activeSubTab == 0 ? CineColors.gold : CineColors.textMuted,
                           ),
-                          const SizedBox(width: 5),
+                          const SizedBox(width: 4),
                           Flexible(
                             child: Text(
-                              'Suggested for You',
+                              'Jobs',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -823,20 +1097,60 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.assignment_turned_in_outlined,
+                            Icons.movie_creation_outlined,
                             size: 14,
                             color: _activeSubTab == 1 ? CineColors.gold : CineColors.textMuted,
                           ),
-                          const SizedBox(width: 5),
+                          const SizedBox(width: 4),
                           Flexible(
                             child: Text(
-                              'Application Status (${appliedJobs.length})',
+                              'Projects (${widget.appState.publicProjects.length})',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 11.5,
+                                fontSize: 11,
                                 fontWeight: _activeSubTab == 1 ? FontWeight.bold : FontWeight.normal,
                                 color: _activeSubTab == 1 ? CineColors.gold : CineColors.textMuted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: InkWell(
+                    onTap: () => setState(() => _activeSubTab = 2),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      decoration: BoxDecoration(
+                        color: _activeSubTab == 2 ? CineColors.gold.withValues(alpha: 0.2) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: _activeSubTab == 2 ? CineColors.gold : Colors.transparent,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.assignment_turned_in_outlined,
+                            size: 14,
+                            color: _activeSubTab == 2 ? CineColors.gold : CineColors.textMuted,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              'Status ($totalApplicationsCount)',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: _activeSubTab == 2 ? FontWeight.bold : FontWeight.normal,
+                                color: _activeSubTab == 2 ? CineColors.gold : CineColors.textMuted,
                               ),
                             ),
                           ),
@@ -1040,6 +1354,21 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                             ),
                           ),
+                          if (job.experience != null && job.experience!.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: CineColors.gold.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: CineColors.gold.withValues(alpha: 0.4), width: 0.8),
+                              ),
+                              child: Text(
+                                job.experience!,
+                                style: const TextStyle(fontSize: 10, color: CineColors.gold, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
                           const SizedBox(width: 12),
                           const Icon(Icons.location_on_outlined, size: 14, color: CineColors.textMuted),
                           const SizedBox(width: 2),
@@ -1149,9 +1478,220 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                 );
               },
             ),
+          ] else if (_activeSubTab == 1) ...[
+            // Public Projects Tab
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.movie_creation_outlined, size: 16, color: CineColors.gold),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      'Published productions looking for talent and crew',
+                      style: TextStyle(fontSize: 12, color: CineColors.textMuted),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh, size: 18, color: CineColors.gold),
+                    onPressed: () => widget.appState.loadPublicProjects(forceRefresh: true),
+                  ),
+                ],
+              ),
+            ),
+            if (widget.appState.isLoadingProjects)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(child: CircularProgressIndicator(color: CineColors.gold)),
+              )
+            else if (widget.appState.publicProjects.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                  child: Column(
+                    children: [
+                      const Icon(Icons.movie_outlined, size: 44, color: CineColors.textMuted),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'No production projects published yet',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: CineColors.textPrimary),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Production houses will post upcoming projects here.',
+                        style: TextStyle(fontSize: 11.5, color: CineColors.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: widget.appState.publicProjects.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 14),
+                itemBuilder: (context, index) {
+                  final project = widget.appState.publicProjects[index];
+                  final studioName = project.productionHouseName ?? 'Production Studio';
+                  final studioLogo = project.productionHouseLogo ?? (studioName.length >= 2 ? studioName.substring(0, 2).toUpperCase() : 'PH');
+
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: CineColors.surfaceCard,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: project.hasUserApplied
+                            ? CineColors.success.withValues(alpha: 0.5)
+                            : CineColors.border,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: CineColors.surfaceElevated,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: CineColors.gold.withValues(alpha: 0.4)),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  studioLogo,
+                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: CineColors.gold),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    project.title,
+                                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: CineColors.textPrimary),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    studioName,
+                                    style: const TextStyle(fontSize: 11.5, color: CineColors.goldLight),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (project.projectType != null && project.projectType!.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: CineColors.gold.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: CineColors.gold.withValues(alpha: 0.4)),
+                                ),
+                                child: Text(
+                                  project.projectType!,
+                                  style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: CineColors.gold),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: CineColors.surfaceElevated,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: CineColors.border),
+                              ),
+                              child: Text(
+                                project.status.label,
+                                style: const TextStyle(fontSize: 11, color: CineColors.textMuted),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            const Icon(Icons.calendar_today_outlined, size: 12, color: CineColors.textMuted),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Starts: ${formatDate(project.startDate)}',
+                              style: const TextStyle(fontSize: 11.5, color: CineColors.textMuted),
+                            ),
+                            if (project.budget != null && project.budget!.isNotEmpty) ...[
+                              const Spacer(),
+                              const Icon(Icons.currency_rupee, size: 12, color: CineColors.gold),
+                              Text(
+                                project.budget!,
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: CineColors.gold),
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (project.description.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            project.description,
+                            style: const TextStyle(fontSize: 12.5, color: CineColors.textMuted, height: 1.4),
+                          ),
+                        ],
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Text(
+                              '${project.applicationsCount} Applicants',
+                              style: const TextStyle(fontSize: 11, color: CineColors.textMuted),
+                            ),
+                            const Spacer(),
+                            if (project.hasUserApplied)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0F291E),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: CineColors.success),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.check_circle_rounded, size: 14, color: CineColors.success),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Applied to Project',
+                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: CineColors.success),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              ElevatedButton(
+                                onPressed: () => _showProjectApplicationDialog(project),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: CineColors.gold,
+                                  foregroundColor: Colors.black,
+                                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                child: const Text(
+                                  'Apply to Project',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
           ] else ...[
             // Application Status Tracker Tab
-            if (appliedJobs.isEmpty)
+            if (appliedJobs.isEmpty && appliedProjects.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 40),
                 child: Center(
@@ -1181,7 +1721,7 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                       Text(
                         widget.appState.hasApplicationsLookupFailed
                             ? 'Unable to sync application status from server. Pull down to retry.'
-                            : 'Apply from Suggested for You to track status here.',
+                            : 'Apply from Jobs or Projects to track status here.',
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 11.5, color: CineColors.textMuted),
                       ),
@@ -1189,73 +1729,161 @@ class _NaukriCastingBoardState extends State<NaukriCastingBoard> {
                   ),
                 ),
               )
-            else
-              ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: appliedJobs.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final job = appliedJobs[index];
-
-                return Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: CineColors.surfaceCard,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: CineColors.gold.withValues(alpha: 0.4)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            else ...[
+              if (appliedProjects.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: Row(
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(job.projectTitle, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                          _buildStatusBadge(job.applicationStatus),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text('${job.studioName} • Role: ${job.targetCraft}',
-                          style: const TextStyle(fontSize: 11.5, color: CineColors.goldLight)),
-                      const SizedBox(height: 6),
-                      Text('Shoot Window: ${job.shootWindow}', style: const TextStyle(fontSize: 11, color: CineColors.textMuted)),
-                      const SizedBox(height: 10),
-
-                      // Visual Step Progression Tracker
-                      Row(
-                        children: [
-                          _trackerDot('Submitted', true),
-                          _trackerLine(job.applicationStatus != ApplicationStatus.submitted &&
-                              job.applicationStatus != ApplicationStatus.rejected &&
-                              job.applicationStatus != ApplicationStatus.unknown),
-                          _trackerDot(
-                              'Review',
-                              job.applicationStatus != ApplicationStatus.submitted &&
-                                  job.applicationStatus != ApplicationStatus.rejected &&
-                                  job.applicationStatus != ApplicationStatus.unknown),
-                          _trackerLine(job.applicationStatus == ApplicationStatus.shortlisted ||
-                              job.applicationStatus == ApplicationStatus.callSheetHold ||
-                              job.applicationStatus == ApplicationStatus.booked),
-                          _trackerDot(
-                              'Shortlist',
-                              job.applicationStatus == ApplicationStatus.shortlisted ||
-                                  job.applicationStatus == ApplicationStatus.callSheetHold ||
-                                  job.applicationStatus == ApplicationStatus.booked),
-                          _trackerLine(job.applicationStatus == ApplicationStatus.callSheetHold ||
-                              job.applicationStatus == ApplicationStatus.booked),
-                          _trackerDot(
-                              'Hold',
-                              job.applicationStatus == ApplicationStatus.callSheetHold ||
-                                  job.applicationStatus == ApplicationStatus.booked),
-                        ],
+                      const Icon(Icons.movie_creation_outlined, size: 14, color: CineColors.gold),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Project Applications (${appliedProjects.length})',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: CineColors.gold),
                       ),
                     ],
                   ),
-                );
-              },
-            ),
+                ),
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: appliedProjects.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final project = appliedProjects[index];
+                    return Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: CineColors.surfaceCard,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: CineColors.gold.withValues(alpha: 0.4)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  project.title,
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              _buildStatusBadge(ProductionJobBrief.parseStatus(project.applicationStatus)),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${project.productionHouseName ?? "Production House"} • Type: ${project.projectType ?? "Production"}',
+                            style: const TextStyle(fontSize: 11.5, color: CineColors.goldLight),
+                          ),
+                          if (project.budget != null && project.budget!.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text('Budget: ${project.budget}', style: const TextStyle(fontSize: 11, color: CineColors.textMuted)),
+                          ],
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              _trackerDot('Submitted', true),
+                              _trackerLine(project.applicationStatus != 'submitted' && project.applicationStatus != null),
+                              _trackerDot('Review', project.applicationStatus != 'submitted' && project.applicationStatus != null),
+                              _trackerLine(project.applicationStatus == 'shortlisted' || project.applicationStatus == 'accepted'),
+                              _trackerDot('Shortlist', project.applicationStatus == 'shortlisted' || project.applicationStatus == 'accepted'),
+                              _trackerLine(project.applicationStatus == 'accepted'),
+                              _trackerDot('Booked', project.applicationStatus == 'accepted'),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (appliedJobs.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.work_outline, size: 14, color: CineColors.gold),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Job Applications (${appliedJobs.length})',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: CineColors.gold),
+                      ),
+                    ],
+                  ),
+                ),
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: appliedJobs.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final job = appliedJobs[index];
+                    return Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: CineColors.surfaceCard,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: CineColors.gold.withValues(alpha: 0.4)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(job.projectTitle, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                              ),
+                              _buildStatusBadge(job.applicationStatus),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text('${job.studioName} • Role: ${job.targetCraft}',
+                              style: const TextStyle(fontSize: 11.5, color: CineColors.goldLight)),
+                          const SizedBox(height: 6),
+                          Text('Shoot Window: ${job.shootWindow}', style: const TextStyle(fontSize: 11, color: CineColors.textMuted)),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              _trackerDot('Submitted', true),
+                              _trackerLine(job.applicationStatus != ApplicationStatus.submitted &&
+                                  job.applicationStatus != ApplicationStatus.rejected &&
+                                  job.applicationStatus != ApplicationStatus.unknown),
+                              _trackerDot(
+                                  'Review',
+                                  job.applicationStatus != ApplicationStatus.submitted &&
+                                      job.applicationStatus != ApplicationStatus.rejected &&
+                                      job.applicationStatus != ApplicationStatus.unknown),
+                              _trackerLine(job.applicationStatus == ApplicationStatus.shortlisted ||
+                                  job.applicationStatus == ApplicationStatus.callSheetHold ||
+                                  job.applicationStatus == ApplicationStatus.booked),
+                              _trackerDot(
+                                  'Shortlist',
+                                  job.applicationStatus == ApplicationStatus.shortlisted ||
+                                      job.applicationStatus == ApplicationStatus.callSheetHold ||
+                                      job.applicationStatus == ApplicationStatus.booked),
+                              _trackerLine(job.applicationStatus == ApplicationStatus.callSheetHold ||
+                                  job.applicationStatus == ApplicationStatus.booked),
+                              _trackerDot(
+                                  'Hold',
+                                  job.applicationStatus == ApplicationStatus.callSheetHold ||
+                                      job.applicationStatus == ApplicationStatus.booked),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ],
           ],
         ],
       ),

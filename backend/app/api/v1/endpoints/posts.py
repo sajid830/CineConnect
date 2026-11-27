@@ -29,7 +29,7 @@ async def _enrich_post_response(post: Post, current_user_id: Optional[uuid.UUID]
     guild_badge = "Verified Guild"
     author_summary = None
 
-    if post.user:
+    if "user" in post.__dict__ and post.user:
         author_summary = TalentSummaryResponse.model_validate(post.user)
         author_name = post.user.full_name or "Filmmaker"
         author_craft = post.user.role or "Direction"
@@ -46,7 +46,7 @@ async def _enrich_post_response(post: Post, current_user_id: Optional[uuid.UUID]
     like_interaction_id: Optional[uuid.UUID] = None
     is_bookmarked = False
 
-    if hasattr(post, "interactions") and post.interactions:
+    if "interactions" in post.__dict__ and post.interactions:
         for i in post.interactions:
             if i.type == "like":
                 likes_count += 1

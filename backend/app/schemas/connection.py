@@ -20,3 +20,25 @@ class ConnectionResponse(BaseModel):
     receiver: Optional[TalentSummaryResponse] = None
     created_at: datetime
     updated_at: datetime
+
+
+class FollowToggleResponse(BaseModel):
+    target_user_id: UUID
+    is_following: bool
+    followers_count: int = 0
+    following_count: int = 0
+
+
+class FollowUserItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: UUID
+    full_name: str
+    handle: Optional[str] = None
+    role: Optional[str] = None
+    avatar_url: Optional[str] = None
+    location: Optional[str] = None
+    account_type: str = "talent"
+    is_following: bool = False
+
+

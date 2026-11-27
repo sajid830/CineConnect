@@ -27,6 +27,9 @@ class Talent {
   final int experienceYears;
   final bool isVerified;
   final List<String> skills;
+  final bool isFollowing;
+  final int followersCount;
+  final int followingCount;
 
   const Talent({
     required this.id,
@@ -37,6 +40,9 @@ class Talent {
     required this.experienceYears,
     required this.isVerified,
     required this.skills,
+    this.isFollowing = false,
+    this.followersCount = 0,
+    this.followingCount = 0,
   });
 
   factory Talent.fromJson(Map<String, dynamic> json) {
@@ -62,6 +68,9 @@ class Talent {
           : 0,
       isVerified: json['is_verified'] == true,
       skills: parsedSkills,
+      isFollowing: json['is_following'] == true,
+      followersCount: (json['followers_count'] as num?)?.toInt() ?? 0,
+      followingCount: (json['following_count'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -74,6 +83,9 @@ class Talent {
     int? experienceYears,
     bool? isVerified,
     List<String>? skills,
+    bool? isFollowing,
+    int? followersCount,
+    int? followingCount,
   }) {
     return Talent(
       id: id ?? this.id,
@@ -84,6 +96,9 @@ class Talent {
       experienceYears: experienceYears ?? this.experienceYears,
       isVerified: isVerified ?? this.isVerified,
       skills: skills ?? this.skills,
+      isFollowing: isFollowing ?? this.isFollowing,
+      followersCount: followersCount ?? this.followersCount,
+      followingCount: followingCount ?? this.followingCount,
     );
   }
 

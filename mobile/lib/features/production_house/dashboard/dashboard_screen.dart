@@ -20,7 +20,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const _titles = [
     'CineConnect',
     'Projects',
-    'Casting calls',
+    'Jobs',
     'Applications',
     'Talent',
   ];
@@ -82,14 +82,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             label: 'Projects',
           ),
           NavigationDestination(
-            icon: Icon(Icons.campaign_outlined),
-            selectedIcon: Icon(Icons.campaign),
-            label: 'Casting',
+            icon: Icon(Icons.work_outline),
+            selectedIcon: Icon(Icons.work),
+            label: 'Jobs',
           ),
           NavigationDestination(
             icon: Icon(Icons.assignment_outlined),
             selectedIcon: Icon(Icons.assignment),
-            label: 'Apps',
+            label: 'Applications',
           ),
           NavigationDestination(
             icon: Icon(Icons.search),

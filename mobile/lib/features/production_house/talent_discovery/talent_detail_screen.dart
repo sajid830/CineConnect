@@ -13,6 +13,7 @@ import 'package:cineconnect/shared/widgets/initials_avatar.dart';
 import 'package:cineconnect/features/production_house/collaboration/invite_button.dart';
 import 'portfolio_section.dart';
 import 'talent_provider.dart';
+import 'package:cineconnect/features/profile/followers_list_sheet.dart';
 
 /// Provider for a specific talent's posts
 final talentPostsProvider = FutureProvider.autoDispose.family<List<CineFeedPost>, String>((ref, talentId) async {
@@ -71,6 +72,60 @@ class _ProfileView extends StatefulWidget {
 class _ProfileViewState extends State<_ProfileView> {
   static const _tabs = ['Portfolio', 'Posts', 'Reels'];
   int _activeTab = 0;
+  late bool _isFollowing;
+  late int _followersCount;
+  bool _isToggling = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isFollowing = widget.talent.isFollowing;
+    _followersCount = widget.talent.followersCount;
+    _fetchFollowStatus();
+  }
+
+  Future<void> _fetchFollowStatus() async {
+    try {
+      final res = await ApiClient().get(ApiEndpoints.followStatus(widget.talent.id));
+      if (res is Map<String, dynamic> && mounted) {
+        setState(() {
+          _isFollowing = res['is_following'] == true;
+          _followersCount = (res['followers_count'] as num?)?.toInt() ?? _followersCount;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFollow() async {
+    if (_isToggling) return;
+    setState(() {
+      _isToggling = true;
+      _isFollowing = !_isFollowing;
+      _followersCount = _isFollowing ? _followersCount + 1 : (_followersCount > 0 ? _followersCount - 1 : 0);
+    });
+
+    try {
+      final res = await ApiClient().post(ApiEndpoints.toggleFollow(widget.talent.id));
+      if (res is Map<String, dynamic> && mounted) {
+        setState(() {
+          _isFollowing = res['is_following'] == true;
+          _followersCount = (res['followers_count'] as num?)?.toInt() ?? _followersCount;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isFollowing = !_isFollowing;
+          _followersCount = _isFollowing ? _followersCount + 1 : (_followersCount > 0 ? _followersCount - 1 : 0);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update follow status: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isToggling = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -132,6 +187,80 @@ class _ProfileViewState extends State<_ProfileView> {
                 Text(
                   '${t.experienceYears} yrs experience',
                   style: const TextStyle(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                InkWell(
+                  onTap: () {
+                    FollowersListSheet.show(
+                      context,
+                      targetUserId: widget.talent.id,
+                      userName: widget.talent.fullName,
+                      initialType: FollowListType.followers,
+                      followersCount: _followersCount,
+                      followingCount: widget.talent.followingCount,
+                      onFollowCountChanged: _fetchFollowStatus,
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Text(
+                      '$_followersCount Followers',
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold, fontSize: 13),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                InkWell(
+                  onTap: () {
+                    FollowersListSheet.show(
+                      context,
+                      targetUserId: widget.talent.id,
+                      userName: widget.talent.fullName,
+                      initialType: FollowListType.following,
+                      followersCount: _followersCount,
+                      followingCount: widget.talent.followingCount,
+                      onFollowCountChanged: _fetchFollowStatus,
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Text(
+                      '${widget.talent.followingCount} Following',
+                      style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _toggleFollow,
+                    icon: Icon(
+                      _isFollowing ? Icons.check : Icons.person_add_alt_1,
+                      size: 18,
+                    ),
+                    label: Text(_isFollowing ? 'Following' : 'Follow'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isFollowing ? AppColors.surface : AppColors.gold,
+                      foregroundColor: _isFollowing ? AppColors.textPrimary : Colors.black,
+                      side: _isFollowing ? const BorderSide(color: AppColors.border) : BorderSide.none,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: InviteButton(talent: t),
                 ),
               ],
             ),
@@ -205,7 +334,6 @@ class _ProfileViewState extends State<_ProfileView> {
               _TalentReelsSection(talentId: t.id, talentName: t.fullName),
 
             const SizedBox(height: 28),
-            InviteButton(talent: t),
           ],
         ),
       ),

@@ -322,27 +322,32 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
   Future<void> _handleAcceptCollaboration(CineNotification notif) async {
     final collabId = notif.collaborationId;
     if (collabId == null) return;
+
+    // Instant optimistic visual feedback (0ms)
+    widget.appState.acceptedCollabIds.add(collabId);
+    widget.appState.declinedCollabIds.remove(collabId);
+    widget.appState.markNotificationAsRead(notif.id);
+    if (mounted) setState(() {});
+
+    if (mounted && context.mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: CineColors.surfaceElevated,
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            'Collaboration accepted! You can now chat.',
+            style: TextStyle(color: CineColors.gold, fontWeight: FontWeight.bold),
+          ),
+        ),
+      );
+    }
+
     try {
       await widget.appState.acceptCollaboration(collabId);
-      await widget.appState.markNotificationAsRead(notif.id);
-      if (mounted) {
-        setState(() {});
-      }
-      if (mounted && context.mounted) {
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            backgroundColor: CineColors.surfaceElevated,
-            duration: Duration(seconds: 3),
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              'Collaboration accepted! You can now chat.',
-              style: TextStyle(color: CineColors.gold),
-            ),
-          ),
-        );
-      }
     } catch (e) {
+      if (mounted) setState(() {});
       if (mounted && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -357,21 +362,32 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
   Future<void> _handleRejectCollaboration(CineNotification notif) async {
     final collabId = notif.collaborationId;
     if (collabId == null) return;
+
+    // Instant optimistic visual feedback (0ms)
+    widget.appState.declinedCollabIds.add(collabId);
+    widget.appState.acceptedCollabIds.remove(collabId);
+    widget.appState.markNotificationAsRead(notif.id);
+    if (mounted) setState(() {});
+
+    if (mounted && context.mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: CineColors.surfaceElevated,
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            'Collaboration invitation declined.',
+            style: TextStyle(color: CineColors.textMuted),
+          ),
+        ),
+      );
+    }
+
     try {
       await widget.appState.rejectCollaboration(collabId);
-      await widget.appState.markNotificationAsRead(notif.id);
-      if (mounted) {
-        setState(() {});
-      }
-      if (mounted && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            backgroundColor: CineColors.surfaceElevated,
-            content: Text('Collaboration invitation declined.', style: TextStyle(color: CineColors.textMuted)),
-          ),
-        );
-      }
     } catch (e) {
+      if (mounted) setState(() {});
       if (mounted && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

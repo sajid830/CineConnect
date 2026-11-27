@@ -10,7 +10,7 @@ import 'home_provider.dart';
 
 /// Tab positions in the dashboard's bottom bar.
 const kProjectsTab = 1;
-const kCastingTab = 2;
+const kJobsTab = 2;
 const kApplicationsTab = 3;
 
 class HomePage extends ConsumerWidget {
@@ -23,9 +23,8 @@ class HomePage extends ConsumerWidget {
     final summaryAsync = ref.watch(dashboardSummaryProvider);
     final opportunities = ref.watch(opportunitiesProvider).valueOrNull ?? const [];
 
-    String opportunityTitle(String id) =>
-        opportunities.where((o) => o.id == id).map((o) => o.title).firstOrNull ??
-        'Casting call';
+    String opportunityTitle(String? id) =>
+        id != null ? (opportunities.where((o) => o.id == id).map((o) => o.title).firstOrNull ?? 'Job opportunity') : 'Job / Project';
 
     return AsyncBody<DashboardSummary>(
       value: summaryAsync,
@@ -61,10 +60,10 @@ class HomePage extends ConsumerWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _StatCard(
-                    icon: Icons.campaign_outlined,
+                    icon: Icons.work_outline,
                     value: s.openCastingCalls,
-                    label: 'Open casting calls',
-                    onTap: () => onOpenTab(kCastingTab),
+                    label: 'Open jobs',
+                    onTap: () => onOpenTab(kJobsTab),
                   ),
                 ),
               ],
@@ -111,7 +110,7 @@ class HomePage extends ConsumerWidget {
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Text(
-                  'No applications yet. Publish a casting call to start receiving them.',
+                  'No applications yet. Publish a job to start receiving applications.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.textMuted),
                 ),

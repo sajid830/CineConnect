@@ -38,6 +38,7 @@ class ApiEndpoints {
   static String projectDetails(String projectId) => '$apiPrefix/projects/$projectId';
   static const String searchProjects = '$apiPrefix/projects/search';
   static String projectOpportunities(String projectId) => '$apiPrefix/projects/$projectId/opportunities';
+  static String projectApplications(String projectId) => '$apiPrefix/projects/$projectId/applications';
 
   // ==========================================
   // 4. Opportunities / Casting & Crew Calls (Browsing for Talent)
@@ -113,6 +114,8 @@ class ApiEndpoints {
   static String acceptConnection(String connId) => '$apiPrefix/connections/$connId/accept';
   static String rejectConnection(String connId) => '$apiPrefix/connections/$connId/reject';
   static String removeConnection(String connId) => '$apiPrefix/connections/$connId';
+  static String toggleFollow(String userId) => '$apiPrefix/connections/toggle/$userId';
+  static String followStatus(String userId) => '$apiPrefix/connections/status/$userId';
 
   // ==========================================
   // 10. Talent Collaborations & Invitations
@@ -135,7 +138,7 @@ class ApiEndpoints {
   static String webSocketChat(String token) {
     final cleanBase = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     final wsBase = cleanBase.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://');
-    return '$wsBase/ws/chat?token=$token';
+    return '$wsBase/ws/chat?token=$token&ngrok-skip-browser-warning=true';
   }
 
   // ==========================================

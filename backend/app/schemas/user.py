@@ -55,6 +55,9 @@ class UserResponse(UserBase):
     account_type: str
     is_verified: bool
     connections_count: int = 0
+    followers_count: int = 0
+    following_count: int = 0
+    is_following: Optional[bool] = False
     endorsements_count: Optional[int] = None
     filmography: List[FilmCreditResponse] = []
     created_at: datetime

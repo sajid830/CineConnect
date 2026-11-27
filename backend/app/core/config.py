@@ -51,10 +51,10 @@ class Settings(BaseSettings):
     TEST_DATABASE_URL: Union[str, None] = None
 
     # Connection Pool Settings
-    DB_POOL_SIZE: int = 10
-    DB_MAX_OVERFLOW: int = 20
-    DB_POOL_TIMEOUT: int = 30
-    DB_POOL_RECYCLE: int = 1800
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 15
+    DB_POOL_TIMEOUT: int = 10
+    DB_POOL_RECYCLE: int = 300
 
     # Supabase Authentication & JWT
     SUPABASE_URL: str = "https://your-project.supabase.co"

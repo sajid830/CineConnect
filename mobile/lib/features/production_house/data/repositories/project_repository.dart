@@ -8,17 +8,21 @@ abstract class ProjectRepository {
 
   Future<Project> createProject({
     required String title,
+    String? projectType,
     required String description,
     required ProjectStatus status,
     required DateTime startDate,
+    String? budget,
   });
 
   Future<void> updateProject({
     required String id,
     required String title,
+    String? projectType,
     required String description,
     required ProjectStatus status,
     required DateTime startDate,
+    String? budget,
   });
 
   Future<void> deleteProject(String id);
@@ -35,17 +39,21 @@ class MockProjectRepository implements ProjectRepository {
   @override
   Future<Project> createProject({
     required String title,
+    String? projectType,
     required String description,
     required ProjectStatus status,
     required DateTime startDate,
+    String? budget,
   }) async {
     await Future.delayed(const Duration(milliseconds: 800));
     final project = Project(
       id: 'mock-${DateTime.now().millisecondsSinceEpoch}',
       title: title,
+      genre: projectType,
       description: description,
       status: status,
       startDate: startDate,
+      budget: budget,
     );
     _projects.insert(0, project);
     return project;
@@ -55,9 +63,11 @@ class MockProjectRepository implements ProjectRepository {
   Future<void> updateProject({
     required String id,
     required String title,
+    String? projectType,
     required String description,
     required ProjectStatus status,
     required DateTime startDate,
+    String? budget,
   }) async {
     await Future.delayed(const Duration(milliseconds: 700));
     final index = _projects.indexWhere((p) => p.id == id);
@@ -65,9 +75,11 @@ class MockProjectRepository implements ProjectRepository {
     _projects[index] = Project(
       id: id,
       title: title,
+      genre: projectType ?? _projects[index].genre,
       description: description,
       status: status,
       startDate: startDate,
+      budget: budget ?? _projects[index].budget,
     );
   }
 
@@ -110,16 +122,21 @@ class RemoteProjectRepository implements ProjectRepository {
   @override
   Future<Project> createProject({
     required String title,
+    String? projectType,
     required String description,
     required ProjectStatus status,
     required DateTime startDate,
+    String? budget,
   }) async {
     final startDateStr = startDate.toIso8601String().split('T').first;
     final body = {
       'title': title,
+      if (projectType != null && projectType.isNotEmpty) 'project_type': projectType,
+      if (projectType != null && projectType.isNotEmpty) 'genre': projectType,
       'description': description,
       'status': Project.toBackendStatus(status),
       'start_date': startDateStr,
+      if (budget != null && budget.isNotEmpty) 'budget': budget,
     };
 
     final res = await _client.post(ApiEndpoints.projectsCollection, body: body);
@@ -136,16 +153,21 @@ class RemoteProjectRepository implements ProjectRepository {
   Future<void> updateProject({
     required String id,
     required String title,
+    String? projectType,
     required String description,
     required ProjectStatus status,
     required DateTime startDate,
+    String? budget,
   }) async {
     final startDateStr = startDate.toIso8601String().split('T').first;
     final body = {
       'title': title,
+      if (projectType != null && projectType.isNotEmpty) 'project_type': projectType,
+      if (projectType != null && projectType.isNotEmpty) 'genre': projectType,
       'description': description,
       'status': Project.toBackendStatus(status),
       'start_date': startDateStr,
+      if (budget != null && budget.isNotEmpty) 'budget': budget,
     };
 
     await _client.put(ApiEndpoints.projectDetails(id), body: body);
