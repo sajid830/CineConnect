@@ -10,15 +10,19 @@ class ProjectsNotifier extends AsyncNotifier<List<Project>> {
 
   Future<void> add({
     required String title,
+    String? projectType,
     required String description,
     required ProjectStatus status,
     required DateTime startDate,
+    String? budget,
   }) async {
     await ref.read(projectRepositoryProvider).createProject(
           title: title,
+          projectType: projectType,
           description: description,
           status: status,
           startDate: startDate,
+          budget: budget,
         );
     ref.invalidateSelf();
     await future;
@@ -27,16 +31,20 @@ class ProjectsNotifier extends AsyncNotifier<List<Project>> {
   Future<void> edit({
     required String id,
     required String title,
+    String? projectType,
     required String description,
     required ProjectStatus status,
     required DateTime startDate,
+    String? budget,
   }) async {
     await ref.read(projectRepositoryProvider).updateProject(
           id: id,
           title: title,
+          projectType: projectType,
           description: description,
           status: status,
           startDate: startDate,
+          budget: budget,
         );
     ref.invalidateSelf();
     await future;

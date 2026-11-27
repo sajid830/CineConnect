@@ -7,6 +7,7 @@ import '../network/api_client.dart';
 import '../services/chat_service.dart';
 import '../services/talent_api_service.dart';
 import '../../features/production_house/data/models/portfolio_item.dart';
+import '../../features/production_house/data/models/project.dart';
 
 class CineAppState extends ChangeNotifier {
   final TalentApiService _apiService;
@@ -111,7 +112,29 @@ class CineAppState extends ChangeNotifier {
       loadStories();
       loadConnections();
       loadConnectionRequests();
+      _startPeriodicSync();
     }
+  }
+
+  Timer? _backgroundSyncTimer;
+
+  void _startPeriodicSync() {
+    _backgroundSyncTimer?.cancel();
+    _backgroundSyncTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      // Lightweight periodic background sync for notifications & chat badges
+      if (ApiClient.currentUserId != null) {
+        try {
+          final unreadRes = await _apiService.getUnreadNotificationCount();
+          if (unreadRes is Map<String, dynamic> && unreadRes['unread_count'] is num) {
+            final newCount = (unreadRes['unread_count'] as num).toInt();
+            if (_serverUnreadCount != newCount) {
+              _serverUnreadCount = newCount;
+              await loadNotifications(forceRefresh: true);
+            }
+          }
+        } catch (_) {}
+      }
+    });
   }
 
   Future<void> _initConnectivityCheck() async {
@@ -753,6 +776,60 @@ class CineAppState extends ChangeNotifier {
     }
   }
 
+  /// Fetches public production house projects from FastAPI and PostgreSQL.
+  Future<void> loadPublicProjects({bool forceRefresh = false}) async {
+    _isLoadingProjects = true;
+    _projectsError = null;
+    notifyListeners();
+
+    try {
+      final res = await _apiService.getPublicProjects();
+
+      // Check applied projects from user's applications
+      final Set<String> appliedProjectIds = {};
+      final Map<String, String> projectAppStatuses = {};
+      try {
+        final appsRes = await _apiService.getMyApplications();
+        if (appsRes is List) {
+          for (final app in appsRes) {
+            if (app is Map<String, dynamic>) {
+              final projId = app['project_id']?.toString();
+              if (projId != null && projId.isNotEmpty) {
+                appliedProjectIds.add(projId);
+                projectAppStatuses[projId] = app['status']?.toString() ?? 'submitted';
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      List<dynamic>? rawList;
+      if (res is List) {
+        rawList = res;
+      } else if (res is Map<String, dynamic> && res['items'] is List) {
+        rawList = res['items'] as List;
+      }
+
+      if (rawList != null) {
+        publicProjects = rawList.whereType<Map<String, dynamic>>().map((item) {
+          final pId = item['id']?.toString() ?? '';
+          final hasApplied = appliedProjectIds.contains(pId);
+          final status = projectAppStatuses[pId];
+          return Project.fromJson(item, hasUserApplied: hasApplied, applicationStatus: status);
+        }).toList();
+        _projectsError = null;
+      } else {
+        publicProjects = [];
+      }
+    } catch (e) {
+      _projectsError = e.toString();
+      publicProjects = [];
+    } finally {
+      _isLoadingProjects = false;
+      notifyListeners();
+    }
+  }
+
   void setActiveNavIndex(int index) {
     _activeNavIndex = index;
     notifyListeners();
@@ -790,6 +867,13 @@ class CineAppState extends ChangeNotifier {
 
   // --- Opportunities ---
   late List<ProductionJobBrief> jobBriefs = [];
+
+  // --- Public Projects ---
+  List<Project> publicProjects = [];
+  bool _isLoadingProjects = false;
+  bool get isLoadingProjects => _isLoadingProjects;
+  String? _projectsError;
+  String? get projectsError => _projectsError;
 
   // --- Reels ---
   late List<CineReelItem> reels = [];
@@ -941,32 +1025,45 @@ class CineAppState extends ChangeNotifier {
   }
 
   Future<void> acceptCollaboration(String collabId) async {
+    // Instant optimistic update (0ms latency for UI)
+    acceptedCollabIds.add(collabId);
+    declinedCollabIds.remove(collabId);
+    notifyListeners();
+
     try {
       await _apiService.acceptCollaboration(collabId);
+      // Run background refreshes without blocking UI
+      unawaited(Future.wait([
+        loadNotifications(forceRefresh: true),
+        loadConversations(),
+      ]));
     } catch (e) {
       if (!e.toString().contains('accepted') && !e.toString().contains('already')) {
+        // Revert on actual failure
+        acceptedCollabIds.remove(collabId);
+        notifyListeners();
         rethrow;
       }
     }
-    acceptedCollabIds.add(collabId);
-    declinedCollabIds.remove(collabId);
-    await loadNotifications(forceRefresh: true);
-    await loadConversations();
-    notifyListeners();
   }
 
   Future<void> rejectCollaboration(String collabId) async {
+    // Instant optimistic update (0ms latency for UI)
+    declinedCollabIds.add(collabId);
+    acceptedCollabIds.remove(collabId);
+    notifyListeners();
+
     try {
       await _apiService.rejectCollaboration(collabId);
+      unawaited(loadNotifications(forceRefresh: true));
     } catch (e) {
       if (!e.toString().contains('rejected') && !e.toString().contains('declined')) {
+        // Revert on actual failure
+        declinedCollabIds.remove(collabId);
+        notifyListeners();
         rethrow;
       }
     }
-    declinedCollabIds.add(collabId);
-    acceptedCollabIds.remove(collabId);
-    await loadNotifications(forceRefresh: true);
-    notifyListeners();
   }
 
   StreamSubscription? _chatWsSubscription;
@@ -1087,11 +1184,18 @@ class CineAppState extends ChangeNotifier {
 
       final index = chatThreads.indexWhere((t) => t.id == partnerUserId);
       if (index != -1) {
-        chatThreads[index] = chatThreads[index].copyWith(
-          messages: mapped,
-          unreadCount: 0,
-        );
-        notifyListeners();
+        final cur = chatThreads[index];
+        final bool isDifferent = cur.messages.length != mapped.length ||
+            (mapped.isNotEmpty && cur.messages.isNotEmpty && mapped.last.id != cur.messages.last.id);
+        if (isDifferent) {
+          chatThreads[index] = cur.copyWith(
+            messages: mapped,
+            unreadCount: 0,
+          );
+          notifyListeners();
+        }
+      } else {
+        await loadConversations();
       }
     } catch (_) {}
   }
@@ -1485,6 +1589,35 @@ class CineAppState extends ChangeNotifier {
     }
   }
 
+  // 1-Tap or detailed apply to public Project using Talent API service
+  Future<void> applyToProject(
+    String projectId, {
+    String? coverLetter,
+    String? resumeUrl,
+    String? selfTapeUrl,
+  }) async {
+    try {
+      await _apiService.applyToProject(
+        projectId: projectId,
+        coverLetter: coverLetter,
+        resumeUrl: resumeUrl,
+        reelUrl: selfTapeUrl,
+      );
+    } catch (e) {
+      rethrow;
+    }
+    final index = publicProjects.indexWhere((p) => p.id == projectId);
+    if (index != -1) {
+      final old = publicProjects[index];
+      publicProjects[index] = old.copyWith(
+        hasUserApplied: true,
+        applicationsCount: old.applicationsCount + 1,
+        applicationStatus: 'submitted',
+      );
+      notifyListeners();
+    }
+  }
+
   // ==========================================
   // Connection Actions (Send, Accept, Reject, Remove)
   // ==========================================
@@ -1633,5 +1766,39 @@ class CineAppState extends ChangeNotifier {
     } else {
       await sendConnectionRequest(talentId);
     }
+  }
+
+  // 1-Tap Instagram-style Follow/Unfollow toggle
+  Future<bool> toggleFollowUser(String targetUserId) async {
+    try {
+      final res = await _apiService.toggleFollow(targetUserId);
+      bool isFollowing = false;
+      if (res is Map<String, dynamic>) {
+        isFollowing = res['is_following'] == true;
+      }
+      peerConnectionStatuses[targetUserId] =
+          isFollowing ? ConnectionStatus.connected : ConnectionStatus.none;
+
+      final idx = talentNetwork.indexWhere((t) => t.id == targetUserId);
+      if (idx != -1) {
+        final old = talentNetwork[idx];
+        talentNetwork[idx] = old.copyWith(
+          connectionStatus: isFollowing ? ConnectionStatus.connected : ConnectionStatus.none,
+          isConnected: isFollowing,
+        );
+      }
+      notifyListeners();
+      return isFollowing;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  @override
+  void dispose() {
+    _backgroundSyncTimer?.cancel();
+    _chatWsSubscription?.cancel();
+    _chatConnSubscription?.cancel();
+    super.dispose();
   }
 }

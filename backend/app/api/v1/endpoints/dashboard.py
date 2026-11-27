@@ -165,20 +165,30 @@ async def get_production_house_dashboard(
     )
     open_opportunities = open_opp_res.scalar_one() or 0
 
-    # 5. Total applications received
+    # 5. Total applications received (Jobs + Projects)
     app_res = await db.execute(
         select(func.count(Application.id))
-        .join(Opportunity, Application.opportunity_id == Opportunity.id)
-        .where(Opportunity.production_house_id == ph.id)
+        .outerjoin(Opportunity, Application.opportunity_id == Opportunity.id)
+        .outerjoin(Project, Application.project_id == Project.id)
+        .where(
+            or_(
+                Opportunity.production_house_id == ph.id,
+                Project.production_house_id == ph.id,
+            )
+        )
     )
     total_applications_received = app_res.scalar_one() or 0
 
     # 6. Pending reviews
     pending_res = await db.execute(
         select(func.count(Application.id))
-        .join(Opportunity, Application.opportunity_id == Opportunity.id)
+        .outerjoin(Opportunity, Application.opportunity_id == Opportunity.id)
+        .outerjoin(Project, Application.project_id == Project.id)
         .where(
-            Opportunity.production_house_id == ph.id,
+            or_(
+                Opportunity.production_house_id == ph.id,
+                Project.production_house_id == ph.id,
+            ),
             Application.status.in_(["submitted", "under_review"]),
         )
     )
@@ -195,9 +205,13 @@ async def get_production_house_dashboard(
     # 8. Shortlisted applications
     shortlisted_res = await db.execute(
         select(func.count(Application.id))
-        .join(Opportunity, Application.opportunity_id == Opportunity.id)
+        .outerjoin(Opportunity, Application.opportunity_id == Opportunity.id)
+        .outerjoin(Project, Application.project_id == Project.id)
         .where(
-            Opportunity.production_house_id == ph.id,
+            or_(
+                Opportunity.production_house_id == ph.id,
+                Project.production_house_id == ph.id,
+            ),
             Application.status == "shortlisted",
         )
     )

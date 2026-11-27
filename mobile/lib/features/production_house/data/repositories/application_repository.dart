@@ -7,6 +7,10 @@ import 'talent_repository.dart';
 abstract class ApplicationRepository {
   Future<List<JobApplication>> getApplications();
 
+  Future<List<JobApplication>> getApplicationsForOpportunity(String opportunityId);
+
+  Future<List<JobApplication>> getApplicationsForProject(String projectId);
+
   Future<void> updateStatus(String id, ApplicationStatus status);
 
   Future<String> getResumeDownloadUrl(String applicationId);
@@ -62,6 +66,18 @@ class MockApplicationRepository implements ApplicationRepository {
     );
     result.sort((a, b) => b.appliedAt.compareTo(a.appliedAt));
     return result;
+  }
+
+  @override
+  Future<List<JobApplication>> getApplicationsForOpportunity(String opportunityId) async {
+    final all = await getApplications();
+    return all.where((a) => a.opportunityId == opportunityId).toList();
+  }
+
+  @override
+  Future<List<JobApplication>> getApplicationsForProject(String projectId) async {
+    final all = await getApplications();
+    return all.where((a) => a.projectId == projectId).toList();
   }
 
   @override
@@ -121,12 +137,6 @@ class RemoteApplicationRepository implements ApplicationRepository {
   }
 
   @override
-  Future<void> updateStatus(String id, ApplicationStatus status) async {
-    final body = {'status': status.apiValue};
-    await _client.patch(ApiEndpoints.applicationStatus(id), body: body);
-  }
-
-  /// Helper to fetch applications specifically for a given opportunity
   Future<List<JobApplication>> getApplicationsForOpportunity(String opportunityId) async {
     try {
       final res = await _client.get(
@@ -148,6 +158,33 @@ class RemoteApplicationRepository implements ApplicationRepository {
     } catch (e) {
       throw ApiException(statusCode: 0, message: 'Failed to load opportunity applications: $e');
     }
+  }
+
+  @override
+  Future<List<JobApplication>> getApplicationsForProject(String projectId) async {
+    try {
+      final res = await _client.get(ApiEndpoints.projectApplications(projectId));
+      if (res is List) {
+        return res.map((item) {
+          if (item is Map) {
+            return JobApplication.fromJson(Map<String, dynamic>.from(item));
+          }
+          throw const FormatException('Expected application item to be a map');
+        }).toList();
+      }
+      return [];
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return [];
+      rethrow;
+    } catch (e) {
+      throw ApiException(statusCode: 0, message: 'Failed to load project applications: $e');
+    }
+  }
+
+  @override
+  Future<void> updateStatus(String id, ApplicationStatus status) async {
+    final body = {'status': status.apiValue};
+    await _client.patch(ApiEndpoints.applicationStatus(id), body: body);
   }
 
   /// Helper to fetch a single application by ID

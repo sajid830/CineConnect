@@ -131,6 +131,8 @@ async def get_current_user(
         # Untrusted claims (e.g. self-assigned 'admin') or unrecognized values safely default to 'talent'
         account_type = "talent"
     full_name = metadata.get("full_name") or metadata.get("name")
+    handle = metadata.get("username")
+    is_verified = bool(metadata.get("is_verified", False))
 
     logger.info("Synchronizing new Supabase Auth user: %s (%s)", user_uuid, email)
     new_user = User(
@@ -138,6 +140,8 @@ async def get_current_user(
         email=email,
         account_type=account_type,
         full_name=full_name,
+        handle=handle,
+        is_verified=is_verified,
     )
     db.add(new_user)
 

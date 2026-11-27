@@ -2,11 +2,13 @@ from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, or_, func
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, get_optional_current_user
 from app.db.session import get_db
 from app.models.user import User, FilmCredit
+from app.models.production_house import ProductionHouse
 from app.models.portfolio import PortfolioMedia
 from app.models.social import Post, Connection
 from app.schemas.user import UserResponse, UserUpdate, UserPatch, UserSearchResponse
@@ -18,18 +20,43 @@ from app.schemas.film_credit import (
 from app.schemas.portfolio import PortfolioMediaResponse
 from app.api.v1.endpoints.portfolio import format_portfolio_response
 from app.schemas.post import PostResponse
-from app.schemas.connection import ConnectionResponse
+from app.schemas.connection import ConnectionResponse, FollowUserItem
 
 router = APIRouter()
 
 
-async def enrich_user_response(user: User, db: AsyncSession) -> UserResponse:
-    conn_count_stmt = select(func.count(Connection.id)).where(
-        or_(Connection.follower_id == user.id, Connection.following_id == user.id),
-        Connection.status == "accepted",
-        Connection.deleted_at.is_(None),
-    )
-    conn_count = (await db.execute(conn_count_stmt)).scalar() or 0
+async def enrich_user_response(user: User, db: AsyncSession, viewer_id: Optional[UUID] = None) -> UserResponse:
+    followers_cnt = (
+        await db.execute(
+            select(func.count(Connection.id)).where(
+                Connection.receiver_id == user.id,
+                Connection.status == "accepted",
+                Connection.deleted_at.is_(None),
+            )
+        )
+    ).scalar() or 0
+
+    following_cnt = (
+        await db.execute(
+            select(func.count(Connection.id)).where(
+                Connection.sender_id == user.id,
+                Connection.status == "accepted",
+                Connection.deleted_at.is_(None),
+            )
+        )
+    ).scalar() or 0
+
+    is_following = False
+    if viewer_id and viewer_id != user.id:
+        is_f_res = await db.execute(
+            select(Connection.id).where(
+                Connection.sender_id == viewer_id,
+                Connection.receiver_id == user.id,
+                Connection.status == "accepted",
+                Connection.deleted_at.is_(None),
+            )
+        )
+        is_following = is_f_res.scalar_one_or_none() is not None
 
     film_credits_stmt = (
         select(FilmCredit)
@@ -40,7 +67,10 @@ async def enrich_user_response(user: User, db: AsyncSession) -> UserResponse:
     filmography = [FilmCreditResponse.model_validate(c) for c in film_credits]
 
     user_resp = UserResponse.model_validate(user)
-    user_resp.connections_count = conn_count
+    user_resp.connections_count = followers_cnt
+    user_resp.followers_count = followers_cnt
+    user_resp.following_count = following_cnt
+    user_resp.is_following = is_following
     user_resp.endorsements_count = None
     user_resp.filmography = filmography
     return user_resp
@@ -200,12 +230,17 @@ async def search_users(
 
 
 @router.get("/{user_id}", response_model=UserResponse, summary="View User Profile")
-async def get_user_by_id(user_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_user_by_id(
+    user_id: UUID,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return await enrich_user_response(user, db)
+    viewer_id = current_user.id if current_user else None
+    return await enrich_user_response(user, db, viewer_id=viewer_id)
 
 
 @router.get("/{user_id}/filmography", response_model=List[FilmCreditResponse], summary="Get User Filmography")
@@ -261,15 +296,139 @@ async def get_user_connections(user_id: UUID, db: AsyncSession = Depends(get_db)
     return result.scalars().all()
 
 
-@router.get("/{user_id}/followers", response_model=List[ConnectionResponse], summary="Get Followers")
-async def get_user_followers(user_id: UUID, db: AsyncSession = Depends(get_db)):
-    stmt = select(Connection).where(Connection.receiver_id == user_id, Connection.status == "accepted")
+@router.get("/{user_id}/followers", response_model=List[FollowUserItem], summary="Get Followers")
+async def get_user_followers(
+    user_id: UUID,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # If a production_house.id was passed, resolve it to its user_id
+    ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == user_id))
+    ph = ph_res.scalar_one_or_none()
+    actual_user_id = ph.user_id if ph else user_id
+
+    # Connections where following_id == actual_user_id (these users are following actual_user_id)
+    stmt = (
+        select(Connection)
+        .where(
+            or_(Connection.following_id == actual_user_id, Connection.receiver_id == actual_user_id),
+            Connection.status == "accepted",
+        )
+        .options(selectinload(Connection.follower))
+    )
     result = await db.execute(stmt)
-    return result.scalars().all()
+    conns = result.scalars().all()
+    follower_users = [c.follower for c in conns if c.follower]
+
+    ph_map = {}
+    if follower_users:
+        ph_map_res = await db.execute(
+            select(ProductionHouse).where(ProductionHouse.user_id.in_([u.id for u in follower_users]))
+        )
+        ph_map = {p.user_id: p for p in ph_map_res.scalars().all()}
+
+    cur_following = set()
+    if current_user:
+        cf_res = await db.execute(
+            select(Connection.following_id).where(
+                Connection.follower_id == current_user.id,
+                Connection.status == "accepted",
+            )
+        )
+        cur_following = set(cf_res.scalars().all())
+
+    items = []
+    for u in follower_users:
+        if u.id in ph_map:
+            p = ph_map[u.id]
+            items.append(FollowUserItem(
+                user_id=u.id,
+                full_name=p.company_name,
+                handle=f"@{p.company_name.lower().replace(' ', '')}",
+                role="Production House",
+                avatar_url=p.logo_url,
+                location=p.location,
+                account_type="production_house",
+                is_following=u.id in cur_following,
+            ))
+        else:
+            items.append(FollowUserItem(
+                user_id=u.id,
+                full_name=u.full_name or "Talent",
+                handle=u.handle or (f"@{u.full_name.lower().replace(' ', '')}" if u.full_name else "@talent"),
+                role=u.role or "Filmmaker",
+                avatar_url=u.avatar_url,
+                location=u.location,
+                account_type="talent",
+                is_following=u.id in cur_following,
+            ))
+    return items
 
 
-@router.get("/{user_id}/following", response_model=List[ConnectionResponse], summary="Get Following List")
-async def get_user_following(user_id: UUID, db: AsyncSession = Depends(get_db)):
-    stmt = select(Connection).where(Connection.sender_id == user_id, Connection.status == "accepted")
+@router.get("/{user_id}/following", response_model=List[FollowUserItem], summary="Get Following List")
+async def get_user_following(
+    user_id: UUID,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # If a production_house.id was passed, resolve it to its user_id
+    ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == user_id))
+    ph = ph_res.scalar_one_or_none()
+    actual_user_id = ph.user_id if ph else user_id
+
+    # Connections where follower_id == actual_user_id (actual_user_id is following these users)
+    stmt = (
+        select(Connection)
+        .where(
+            or_(Connection.follower_id == actual_user_id, Connection.sender_id == actual_user_id),
+            Connection.status == "accepted",
+        )
+        .options(selectinload(Connection.following))
+    )
     result = await db.execute(stmt)
-    return result.scalars().all()
+    conns = result.scalars().all()
+    following_users = [c.following for c in conns if c.following]
+
+    ph_map = {}
+    if following_users:
+        ph_map_res = await db.execute(
+            select(ProductionHouse).where(ProductionHouse.user_id.in_([u.id for u in following_users]))
+        )
+        ph_map = {p.user_id: p for p in ph_map_res.scalars().all()}
+
+    cur_following = set()
+    if current_user:
+        cf_res = await db.execute(
+            select(Connection.following_id).where(
+                Connection.follower_id == current_user.id,
+                Connection.status == "accepted",
+            )
+        )
+        cur_following = set(cf_res.scalars().all())
+
+    items = []
+    for u in following_users:
+        if u.id in ph_map:
+            p = ph_map[u.id]
+            items.append(FollowUserItem(
+                user_id=u.id,
+                full_name=p.company_name,
+                handle=f"@{p.company_name.lower().replace(' ', '')}",
+                role="Production House",
+                avatar_url=p.logo_url,
+                location=p.location,
+                account_type="production_house",
+                is_following=u.id in cur_following,
+            ))
+        else:
+            items.append(FollowUserItem(
+                user_id=u.id,
+                full_name=u.full_name or "Talent",
+                handle=u.handle or (f"@{u.full_name.lower().replace(' ', '')}" if u.full_name else "@talent"),
+                role=u.role or "Filmmaker",
+                avatar_url=u.avatar_url,
+                location=u.location,
+                account_type="talent",
+                is_following=u.id in cur_following,
+            ))
+    return items

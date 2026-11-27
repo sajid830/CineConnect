@@ -15,6 +15,7 @@ class CompanyProfile {
   final String? companyType;
   final int followersCount;
   final int followingCount;
+  final String? userId;
 
   const CompanyProfile({
     required this.id,
@@ -33,6 +34,7 @@ class CompanyProfile {
     this.companyType,
     this.followersCount = 0,
     this.followingCount = 0,
+    this.userId,
   });
 
   factory CompanyProfile.fromJson(Map<String, dynamic> json) {
@@ -71,6 +73,7 @@ class CompanyProfile {
       companyType: companyType,
       followersCount: followers,
       followingCount: following,
+      userId: json['user_id']?.toString(),
     );
   }
 
@@ -91,6 +94,7 @@ class CompanyProfile {
     String? companyType,
     int? followersCount,
     int? followingCount,
+    String? userId,
   }) {
     return CompanyProfile(
       id: id ?? this.id,
@@ -109,6 +113,7 @@ class CompanyProfile {
       companyType: companyType ?? this.companyType,
       followersCount: followersCount ?? this.followersCount,
       followingCount: followingCount ?? this.followingCount,
+      userId: userId ?? this.userId,
     );
   }
 

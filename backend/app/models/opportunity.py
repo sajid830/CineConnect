@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
 from typing import Optional, List
-from sqlalchemy import String, Text, Date, DateTime, ForeignKey, UniqueConstraint, func
+from sqlalchemy import String, Text, Date, DateTime, ForeignKey, Integer, func
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 from app.db.base import Base
@@ -14,14 +14,18 @@ class Opportunity(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
     production_house_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("production_houses.id", ondelete="CASCADE"), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     role_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # Lead, Supporting, Crew, etc.
+    purpose: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    required_members: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    work_start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    experience: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     requirements: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     skills: Mapped[Optional[List[str]]] = mapped_column(
         ARRAY(String(100)), nullable=True
@@ -44,7 +48,7 @@ class Opportunity(Base):
     )
 
     # Relationships
-    project: Mapped["Project"] = relationship("Project", back_populates="opportunities")
+    project: Mapped[Optional["Project"]] = relationship("Project", back_populates="opportunities")
     production_house: Mapped["ProductionHouse"] = relationship("ProductionHouse", back_populates="opportunities")
     applications: Mapped[List["Application"]] = relationship(
         "Application", back_populates="opportunity", cascade="all, delete-orphan"
@@ -52,14 +56,17 @@ class Opportunity(Base):
 
 
 class Application(Base):
-    """Job / role application submitted by a talent user for an opportunity."""
+    """Job / role application submitted by a talent user for an opportunity or project."""
     __tablename__ = "applications"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    opportunity_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True
+    opportunity_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
     talent_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
@@ -84,10 +91,7 @@ class Application(Base):
     # Alias created_at to applied_at for backward compatibility with existing API endpoints
     created_at = synonym("applied_at")
 
-    __table_args__ = (
-        UniqueConstraint("opportunity_id", "talent_id", name="uq_application_opportunity_talent"),
-    )
-
     # Relationships
-    opportunity: Mapped["Opportunity"] = relationship("Opportunity", back_populates="applications")
+    opportunity: Mapped[Optional["Opportunity"]] = relationship("Opportunity", back_populates="applications")
+    project: Mapped[Optional["Project"]] = relationship("Project", back_populates="applications")
     talent: Mapped["User"] = relationship("User", back_populates="applications", lazy="selectin")

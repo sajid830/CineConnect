@@ -78,15 +78,18 @@ class CineAppHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(8, 6, 12, 6),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(
-              Icons.arrow_back_rounded,
-              color: CineColors.textPrimary,
-              size: 22,
-            ),
-            splashRadius: 20,
-            onPressed: onBack ?? () {},
-          ),
+          if (onBack != null)
+            IconButton(
+              icon: const Icon(
+                Icons.arrow_back_rounded,
+                color: CineColors.textPrimary,
+                size: 22,
+              ),
+              splashRadius: 20,
+              onPressed: onBack,
+            )
+          else
+            const SizedBox(width: 6),
           Container(
             width: 32,
             height: 32,

@@ -112,6 +112,8 @@ class TalentProfile {
   final List<String> skillTags;
   final List<VerifiedFilmCredit> filmography;
   final int connectionsCount;
+  final int followersCount;
+  final int followingCount;
   final int? endorsementsCount;
   final bool isConnected;
   final String? connectionId;
@@ -134,6 +136,8 @@ class TalentProfile {
     this.skillTags = const [],
     this.filmography = const [],
     this.connectionsCount = 0,
+    this.followersCount = 0,
+    this.followingCount = 0,
     this.endorsementsCount,
     this.isConnected = false,
     this.connectionId,
@@ -158,6 +162,8 @@ class TalentProfile {
     List<VerifiedFilmCredit>? filmography,
     bool? isConnected,
     int? connectionsCount,
+    int? followersCount,
+    int? followingCount,
     int? endorsementsCount,
     String? connectionId,
     ConnectionStatus? connectionStatus,
@@ -184,6 +190,8 @@ class TalentProfile {
       skillTags: skillTags ?? this.skillTags,
       filmography: filmography ?? this.filmography,
       connectionsCount: connectionsCount ?? this.connectionsCount,
+      followersCount: followersCount ?? this.followersCount,
+      followingCount: followingCount ?? this.followingCount,
       endorsementsCount: endorsementsCount ?? this.endorsementsCount,
       isConnected: nextConnected,
       connectionId: connectionId ?? this.connectionId,
@@ -249,7 +257,9 @@ class TalentProfile {
       verifiedGear: parsedGear,
       skillTags: parsedSkills,
       filmography: parsedCredits,
-      connectionsCount: (json['connections_count'] as num?)?.toInt() ?? 0,
+      connectionsCount: (json['connections_count'] as num?)?.toInt() ?? (json['followers_count'] as num?)?.toInt() ?? 0,
+      followersCount: (json['followers_count'] as num?)?.toInt() ?? (json['connections_count'] as num?)?.toInt() ?? 0,
+      followingCount: (json['following_count'] as num?)?.toInt() ?? 0,
       endorsementsCount: (json['endorsements_count'] as num?)?.toInt(),
       isConnected: json['is_connected'] == true || json['connection_status'] == 'accepted',
       connectionId: json['connection_id']?.toString(),
@@ -332,6 +342,10 @@ class ProductionJobBrief {
   final bool isPanIndia;
   final bool hasUserApplied;
   final ApplicationStatus applicationStatus;
+  final String? purpose;
+  final int requiredMembers;
+  final DateTime? workStartDate;
+  final String? experience;
 
   const ProductionJobBrief({
     required this.id,
@@ -350,12 +364,20 @@ class ProductionJobBrief {
     this.isPanIndia = true,
     this.hasUserApplied = false,
     this.applicationStatus = ApplicationStatus.submitted,
+    this.purpose,
+    this.requiredMembers = 1,
+    this.workStartDate,
+    this.experience,
   });
 
   ProductionJobBrief copyWith({
     bool? hasUserApplied,
     ApplicationStatus? applicationStatus,
     int? applicantsCount,
+    String? purpose,
+    int? requiredMembers,
+    DateTime? workStartDate,
+    String? experience,
   }) {
     return ProductionJobBrief(
       id: id,
@@ -374,6 +396,10 @@ class ProductionJobBrief {
       isPanIndia: isPanIndia,
       hasUserApplied: hasUserApplied ?? this.hasUserApplied,
       applicationStatus: applicationStatus ?? this.applicationStatus,
+      purpose: purpose ?? this.purpose,
+      requiredMembers: requiredMembers ?? this.requiredMembers,
+      workStartDate: workStartDate ?? this.workStartDate,
+      experience: experience ?? this.experience,
     );
   }
 
@@ -467,6 +493,11 @@ class ProductionJobBrief {
 
     final isPan = location.toLowerCase().contains('pan-india') || location.toLowerCase().contains('india');
 
+    DateTime? workDate;
+    if (json['work_start_date'] != null && json['work_start_date'].toString().isNotEmpty) {
+      workDate = DateTime.tryParse(json['work_start_date'].toString());
+    }
+
     return ProductionJobBrief(
       id: rawId,
       studioName: studio,
@@ -484,12 +515,17 @@ class ProductionJobBrief {
       isPanIndia: isPan,
       hasUserApplied: hasUserApplied ?? (json['has_user_applied'] == true),
       applicationStatus: applicationStatus ?? parseStatus(json['status']?.toString()),
+      purpose: json['purpose']?.toString(),
+      requiredMembers: (json['required_members'] as num?)?.toInt() ?? 1,
+      workStartDate: workDate,
+      experience: json['experience']?.toString(),
     );
   }
 }
 
 class CineFeedPost {
   final String id;
+  final String? authorId;
   final String authorName;
   final String authorCraft;
   final String authorAvatar;
@@ -509,6 +545,7 @@ class CineFeedPost {
 
   const CineFeedPost({
     required this.id,
+    this.authorId,
     required this.authorName,
     required this.authorCraft,
     required this.authorAvatar,
@@ -537,6 +574,7 @@ class CineFeedPost {
   }) {
     return CineFeedPost(
       id: id,
+      authorId: authorId,
       authorName: authorName,
       authorCraft: authorCraft,
       authorAvatar: authorAvatar,
@@ -580,6 +618,7 @@ class CineFeedPost {
 
     return CineFeedPost(
       id: json['id']?.toString() ?? '',
+      authorId: json['user_id']?.toString() ?? json['author_id']?.toString(),
       authorName: json['author_name']?.toString() ?? 'Filmmaker',
       authorCraft: json['author_craft']?.toString() ?? 'Direction',
       authorAvatar: json['author_avatar']?.toString() ?? 'CC',

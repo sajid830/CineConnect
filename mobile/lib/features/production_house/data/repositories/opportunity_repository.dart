@@ -7,16 +7,26 @@ abstract class OpportunityRepository {
   Future<List<Opportunity>> getOpportunities();
 
   Future<Opportunity> createOpportunity({
-    required String projectId,
+    String? projectId,
     required String title,
+    String? roleType,
+    String? purpose,
+    int requiredMembers = 1,
+    DateTime? workStartDate,
+    String? experience,
     required String requirements,
     required DateTime deadline,
   });
 
   Future<void> updateOpportunity({
     required String id,
-    required String projectId,
+    String? projectId,
     required String title,
+    String? roleType,
+    String? purpose,
+    int? requiredMembers,
+    DateTime? workStartDate,
+    String? experience,
     required String requirements,
     required DateTime deadline,
   });
@@ -36,8 +46,13 @@ class MockOpportunityRepository implements OpportunityRepository {
 
   @override
   Future<Opportunity> createOpportunity({
-    required String projectId,
+    String? projectId,
     required String title,
+    String? roleType,
+    String? purpose,
+    int requiredMembers = 1,
+    DateTime? workStartDate,
+    String? experience,
     required String requirements,
     required DateTime deadline,
   }) async {
@@ -46,9 +61,14 @@ class MockOpportunityRepository implements OpportunityRepository {
       id: 'mock-${DateTime.now().millisecondsSinceEpoch}',
       projectId: projectId,
       title: title,
+      roleType: roleType,
+      purpose: purpose,
+      requiredMembers: requiredMembers,
+      workStartDate: workStartDate,
+      experience: experience,
       requirements: requirements,
       deadline: deadline,
-      status: OpportunityStatus.draft,
+      status: OpportunityStatus.open,
     );
     _items.insert(0, item);
     return item;
@@ -57,8 +77,13 @@ class MockOpportunityRepository implements OpportunityRepository {
   @override
   Future<void> updateOpportunity({
     required String id,
-    required String projectId,
+    String? projectId,
     required String title,
+    String? roleType,
+    String? purpose,
+    int? requiredMembers,
+    DateTime? workStartDate,
+    String? experience,
     required String requirements,
     required DateTime deadline,
   }) async {
@@ -69,6 +94,11 @@ class MockOpportunityRepository implements OpportunityRepository {
       id: id,
       projectId: projectId,
       title: title,
+      roleType: roleType ?? _items[index].roleType,
+      purpose: purpose ?? _items[index].purpose,
+      requiredMembers: requiredMembers ?? _items[index].requiredMembers,
+      workStartDate: workStartDate ?? _items[index].workStartDate,
+      experience: experience ?? _items[index].experience,
       requirements: requirements,
       deadline: deadline,
       status: _items[index].status,
@@ -85,6 +115,10 @@ class MockOpportunityRepository implements OpportunityRepository {
       id: old.id,
       projectId: old.projectId,
       title: old.title,
+      roleType: old.roleType,
+      purpose: old.purpose,
+      requiredMembers: old.requiredMembers,
+      workStartDate: old.workStartDate,
       requirements: old.requirements,
       deadline: old.deadline,
       status: status,
@@ -118,29 +152,39 @@ class RemoteOpportunityRepository implements OpportunityRepository {
       return [];
     } on ApiException catch (e) {
       if (e.statusCode == 404) {
-        // Production house profile not found or no opportunities yet
         return [];
       }
       rethrow;
     } catch (e) {
-      throw ApiException(statusCode: 0, message: 'Failed to load casting calls: $e');
+      throw ApiException(statusCode: 0, message: 'Failed to load jobs: $e');
     }
   }
 
   @override
   Future<Opportunity> createOpportunity({
-    required String projectId,
+    String? projectId,
     required String title,
+    String? roleType,
+    String? purpose,
+    int requiredMembers = 1,
+    DateTime? workStartDate,
+    String? experience,
     required String requirements,
     required DateTime deadline,
   }) async {
     final deadlineStr = deadline.toIso8601String().split('T').first;
+    final workStartStr = workStartDate?.toIso8601String().split('T').first;
     final body = {
-      'project_id': projectId,
+      if (projectId != null && projectId.isNotEmpty) 'project_id': projectId,
       'title': title,
+      'role_type': roleType ?? title,
+      if (purpose != null && purpose.isNotEmpty) 'purpose': purpose,
+      'required_members': requiredMembers,
+      if (workStartStr != null) 'work_start_date': workStartStr,
+      if (experience != null && experience.isNotEmpty) 'experience': experience,
       'requirements': requirements,
       'deadline': deadlineStr,
-      'status': 'draft',
+      'status': 'open',
     };
 
     final res = await _client.post(ApiEndpoints.opportunities, body: body);
@@ -149,21 +193,32 @@ class RemoteOpportunityRepository implements OpportunityRepository {
     }
     throw ApiException(
       statusCode: 500,
-      message: 'Invalid response from server on casting call creation',
+      message: 'Invalid response from server on job creation',
     );
   }
 
   @override
   Future<void> updateOpportunity({
     required String id,
-    required String projectId,
+    String? projectId,
     required String title,
+    String? roleType,
+    String? purpose,
+    int? requiredMembers,
+    DateTime? workStartDate,
+    String? experience,
     required String requirements,
     required DateTime deadline,
   }) async {
     final deadlineStr = deadline.toIso8601String().split('T').first;
+    final workStartStr = workStartDate?.toIso8601String().split('T').first;
     final body = {
       'title': title,
+      if (roleType != null) 'role_type': roleType,
+      if (purpose != null) 'purpose': purpose,
+      if (requiredMembers != null) 'required_members': requiredMembers,
+      if (workStartStr != null) 'work_start_date': workStartStr,
+      if (experience != null) 'experience': experience,
       'requirements': requirements,
       'deadline': deadlineStr,
     };

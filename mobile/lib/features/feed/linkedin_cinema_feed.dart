@@ -4,6 +4,7 @@ import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/state/app_state.dart';
 import '../stories/story_status_bar.dart';
+import '../profile/followers_list_sheet.dart';
 
 class LinkedInCinemaFeed extends StatefulWidget {
   final CineAppState appState;
@@ -61,6 +62,8 @@ class _LinkedInCinemaFeedState extends State<LinkedInCinemaFeed> {
             setState(() {
               _followedAuthors[post.id] = val;
             });
+            final targetId = post.authorId ?? post.id;
+            widget.appState.toggleFollowUser(targetId);
           },
         ),
       ),
@@ -1434,8 +1437,32 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
                         _buildStatColumn('18', 'Posts'),
-                        _buildStatColumn('4.6K', 'Followers'),
-                        _buildStatColumn('320', 'Following'),
+                        _buildStatColumn(
+                          'Followers',
+                          'Followers',
+                          countText: 'Followers',
+                          onTap: () {
+                            FollowersListSheet.show(
+                              context,
+                              targetUserId: post.authorId ?? '',
+                              userName: post.authorName,
+                              initialType: FollowListType.followers,
+                            );
+                          },
+                        ),
+                        _buildStatColumn(
+                          'Following',
+                          'Following',
+                          countText: 'Following',
+                          onTap: () {
+                            FollowersListSheet.show(
+                              context,
+                              targetUserId: post.authorId ?? '',
+                              userName: post.authorName,
+                              initialType: FollowListType.following,
+                            );
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -1641,12 +1668,12 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     );
   }
 
-  Widget _buildStatColumn(String count, String label) {
-    return Column(
+  Widget _buildStatColumn(String count, String label, {String? countText, VoidCallback? onTap}) {
+    final col = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          count,
+          countText ?? count,
           style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
@@ -1662,6 +1689,15 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
           ),
         ),
       ],
+    );
+    if (onTap == null) return col;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: col,
+      ),
     );
   }
 }

@@ -26,6 +26,7 @@ import 'package:cineconnect/features/production_house/projects/projects_provider
 import 'package:cineconnect/features/production_house/talent_discovery/talent_provider.dart';
 import 'company_logo.dart';
 import 'company_profile_provider.dart';
+import 'package:cineconnect/features/profile/followers_list_sheet.dart';
 
 /// Provider for studio feed posts
 final studioPostsProvider = FutureProvider.autoDispose.family<List<CineFeedPost>, String>((ref, studioId) async {
@@ -596,8 +597,36 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
     final stats = [
       _Stat(projects == null ? '-' : '${projects.length}', 'Projects'),
       _Stat(openRoles == null ? '-' : '$openRoles', 'Open roles'),
-      _Stat(formatCount(p.followersCount), 'Followers'),
-      _Stat(formatCount(p.followingCount), 'Following'),
+      _Stat(
+        formatCount(p.followersCount),
+        'Followers',
+        onTap: () {
+          FollowersListSheet.show(
+            context,
+            targetUserId: p.id,
+            userName: p.companyName,
+            initialType: FollowListType.followers,
+            followersCount: p.followersCount,
+            followingCount: p.followingCount,
+            onFollowCountChanged: () => ref.invalidate(companyProfileProvider),
+          );
+        },
+      ),
+      _Stat(
+        formatCount(p.followingCount),
+        'Following',
+        onTap: () {
+          FollowersListSheet.show(
+            context,
+            targetUserId: p.id,
+            userName: p.companyName,
+            initialType: FollowListType.following,
+            followersCount: p.followersCount,
+            followingCount: p.followingCount,
+            onFollowCountChanged: () => ref.invalidate(companyProfileProvider),
+          );
+        },
+      ),
     ];
 
     return Container(
@@ -874,12 +903,13 @@ class _ProfileViewState extends ConsumerState<_ProfileView> {
 class _Stat extends StatelessWidget {
   final String value;
   final String label;
+  final VoidCallback? onTap;
 
-  const _Stat(this.value, this.label);
+  const _Stat(this.value, this.label, {this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final col = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
@@ -900,6 +930,15 @@ class _Stat extends StatelessWidget {
           ),
         ),
       ],
+    );
+    if (onTap == null) return col;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: col,
+      ),
     );
   }
 }

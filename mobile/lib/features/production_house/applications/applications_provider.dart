@@ -20,6 +20,16 @@ final applicationsProvider =
   ApplicationsNotifier.new,
 );
 
+final projectApplicationsProvider =
+    FutureProvider.family<List<JobApplication>, String>((ref, projectId) async {
+  return ref.read(applicationRepositoryProvider).getApplicationsForProject(projectId);
+});
+
+final opportunityApplicationsProvider =
+    FutureProvider.family<List<JobApplication>, String>((ref, oppId) async {
+  return ref.read(applicationRepositoryProvider).getApplicationsForOpportunity(oppId);
+});
+
 typedef ApplicationFilter = ({ApplicationStatus? status, String? opportunityId});
 
 class ApplicationFilterNotifier extends Notifier<ApplicationFilter> {

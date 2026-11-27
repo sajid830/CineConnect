@@ -111,16 +111,38 @@ class _AuthScreenState extends State<AuthScreen> {
         return;
       }
 
-      // 2. Username cannot contain spaces
-      if (username.contains(' ')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Username cannot contain spaces.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        setState(() => isLoading = false);
-        return;
+      final isProductionRole = widget.selectedRole == 'production' ||
+          widget.selectedRole == 'production_house' ||
+          widget.selectedRole == 'production_hub';
+
+      if (isProductionRole) {
+        // 2. Production House ID must be 3 letters, hyphen, 6 digits (e.g. SUN-213654)
+        final idInput = _usernameController.text.trim();
+        final idRegex = RegExp(r'^[A-Za-z]{3}-\d{6}$');
+        if (!idRegex.hasMatch(idInput)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Invalid Studio/Production House ID format. Must contain 3 letters, a hyphen, and 6 digits (e.g. SUN-213654).',
+              ),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          setState(() => isLoading = false);
+          return;
+        }
+      } else {
+        // 2. Username cannot contain spaces for Talent
+        if (username.contains(' ')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Username cannot contain spaces.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          setState(() => isLoading = false);
+          return;
+        }
       }
 
       // 3. Email format validation
@@ -263,11 +285,17 @@ class _AuthScreenState extends State<AuthScreen> {
         final canonicalAccountType =
             isProduction ? 'production_house' : 'talent';
 
+        final rawUsername = _usernameController.text.trim();
+        final formattedUsername =
+            isProduction ? rawUsername.toUpperCase() : rawUsername.toLowerCase();
+
         final Map<String, dynamic> metadata = {
           'account_type': canonicalAccountType,
           'role': widget.selectedRole,
           'full_name': _nameController.text.trim(),
-          'username': _usernameController.text.trim().toLowerCase(),
+          'username': formattedUsername,
+          'studio_id': isProduction ? formattedUsername : null,
+          'is_verified': isProduction ? true : false,
           'mobile_number': _mobileController.text.trim(),
         };
 
@@ -513,19 +541,19 @@ class _AuthScreenState extends State<AuthScreen> {
                   // 1. Full Name / Studio Name
                   _buildInputField(
                     controller: _nameController,
-                    label: isProduction ? 'Studio / Company Name' : 'Full Name',
+                    label: isProduction ? 'Studio / Production House Name' : 'Full Name',
                     hint: isProduction
                         ? 'e.g. Mythri Movie Makers'
                         : 'e.g. Jane Doe',
                   ),
                   const SizedBox(height: 20),
 
-                  // 2. Username
+                  // 2. Username / ID
                   _buildInputField(
                     controller: _usernameController,
-                    label: isProduction ? 'Studio Username' : 'Username',
+                    label: isProduction ? 'Studio / Production House ID' : 'Username',
                     hint: isProduction
-                        ? 'e.g. mythriofficial'
+                        ? 'e.g. SUN-213654'
                         : 'e.g. janedoe',
                   ),
                   const SizedBox(height: 20),

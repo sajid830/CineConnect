@@ -71,7 +71,7 @@ class OpportunityDetailScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Casting call'),
+        title: const Text('Job Details'),
         actions: [
           if (item != null)
             PopupMenuButton<String>(
@@ -170,6 +170,19 @@ class OpportunityDetailScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  if (o.experience != null && o.experience!.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(Icons.work_history_outlined, size: 16, color: AppColors.gold),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Required Experience: ${o.experience}',
+                          style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.gold),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   const Text(
                     'Requirements',

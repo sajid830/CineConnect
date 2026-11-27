@@ -8,6 +8,7 @@ import '../../core/state/app_state.dart';
 import '../../core/services/media_upload_service.dart';
 import '../production_house/data/models/portfolio_item.dart';
 import '../production_house/applications/audition_video_player_dialog.dart';
+import 'followers_list_sheet.dart';
 
 class DigitalSlateProfileView extends StatefulWidget {
   final CineAppState appState;
@@ -456,8 +457,36 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
                       _stat('$postsCount', 'posts'),
-                      _stat('${talent.connectionsCount}', 'followers'),
-                      _stat(talent.endorsementsCount != null ? '${talent.endorsementsCount}' : '0', 'following'),
+                      _stat(
+                        '${talent.followersCount}',
+                        'followers',
+                        onTap: () {
+                          FollowersListSheet.show(
+                            context,
+                            targetUserId: talent.id,
+                            userName: talent.fullName,
+                            initialType: FollowListType.followers,
+                            followersCount: talent.followersCount,
+                            followingCount: talent.followingCount,
+                            onFollowCountChanged: () => widget.appState.loadMyProfile(),
+                          );
+                        },
+                      ),
+                      _stat(
+                        '${talent.followingCount}',
+                        'following',
+                        onTap: () {
+                          FollowersListSheet.show(
+                            context,
+                            targetUserId: talent.id,
+                            userName: talent.fullName,
+                            initialType: FollowListType.following,
+                            followersCount: talent.followersCount,
+                            followingCount: talent.followingCount,
+                            onFollowCountChanged: () => widget.appState.loadMyProfile(),
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -602,8 +631,8 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
     );
   }
 
-  Widget _stat(String value, String label) {
-    return Column(
+  Widget _stat(String value, String label, {VoidCallback? onTap}) {
+    final col = Column(
       children: [
         Text(
           value,
@@ -619,6 +648,15 @@ class _DigitalSlateProfileViewState extends State<DigitalSlateProfileView> {
           style: const TextStyle(fontSize: 10.5, color: CineColors.textMuted),
         ),
       ],
+    );
+    if (onTap == null) return col;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        child: col,
+      ),
     );
   }
 

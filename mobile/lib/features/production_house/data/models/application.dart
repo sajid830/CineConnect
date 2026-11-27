@@ -38,7 +38,11 @@ enum ApplicationStatus {
 
 class JobApplication {
   final String id;
-  final String opportunityId;
+  final String? opportunityId;
+  final String? projectId;
+  final String? targetType;
+  final String? projectTitle;
+  final String? opportunityTitle;
   final ApplicationStatus status;
   final String coverLetter;
   final DateTime appliedAt;
@@ -48,7 +52,11 @@ class JobApplication {
 
   const JobApplication({
     required this.id,
-    required this.opportunityId,
+    this.opportunityId,
+    this.projectId,
+    this.targetType,
+    this.projectTitle,
+    this.opportunityTitle,
     required this.status,
     required this.coverLetter,
     required this.appliedAt,
@@ -59,7 +67,11 @@ class JobApplication {
 
   factory JobApplication.fromJson(Map<String, dynamic> json) {
     final rawId = json['id']?.toString() ?? '';
-    final oppId = json['opportunity_id']?.toString() ?? '';
+    final oppId = json['opportunity_id']?.toString();
+    final projId = json['project_id']?.toString();
+    final target = json['target_type']?.toString() ?? (projId != null && projId.isNotEmpty ? 'project' : 'opportunity');
+    final projTitle = json['project_title']?.toString();
+    final oppTitle = json['opportunity_title']?.toString();
     final status = ApplicationStatus.fromApi(json['status']?.toString());
     final coverLetter = json['cover_letter']?.toString() ?? '';
 
@@ -91,6 +103,10 @@ class JobApplication {
     return JobApplication(
       id: rawId,
       opportunityId: oppId,
+      projectId: projId,
+      targetType: target,
+      projectTitle: projTitle,
+      opportunityTitle: oppTitle,
       status: status,
       coverLetter: coverLetter,
       appliedAt: applied,
@@ -103,6 +119,10 @@ class JobApplication {
   JobApplication copyWith({
     String? id,
     String? opportunityId,
+    String? projectId,
+    String? targetType,
+    String? projectTitle,
+    String? opportunityTitle,
     ApplicationStatus? status,
     String? coverLetter,
     DateTime? appliedAt,
@@ -113,6 +133,10 @@ class JobApplication {
     return JobApplication(
       id: id ?? this.id,
       opportunityId: opportunityId ?? this.opportunityId,
+      projectId: projectId ?? this.projectId,
+      targetType: targetType ?? this.targetType,
+      projectTitle: projectTitle ?? this.projectTitle,
+      opportunityTitle: opportunityTitle ?? this.opportunityTitle,
       status: status ?? this.status,
       coverLetter: coverLetter ?? this.coverLetter,
       appliedAt: appliedAt ?? this.appliedAt,
