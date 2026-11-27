@@ -1,7 +1,8 @@
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_, and_, func
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -18,6 +19,7 @@ from app.schemas.opportunity import (
 )
 from app.schemas.application import ApplicationResponse
 from app.api.v1.endpoints.applications import to_ph_application_response
+from app.services.realtime import realtime_pooler
 
 router = APIRouter()
 
@@ -187,6 +189,15 @@ async def update_opportunity(
 
     await db.commit()
     await db.refresh(opp)
+    realtime_pooler.trigger_event(
+        "opportunity_updated",
+        {
+            "opportunity_id": str(opp.id),
+            "project_id": str(opp.project_id) if opp.project_id else None,
+            "production_house_id": str(ph.id),
+            "status": opp.status,
+        },
+    )
     return opp
 
 
@@ -221,6 +232,15 @@ async def patch_opportunity(
 
     await db.commit()
     await db.refresh(opp)
+    realtime_pooler.trigger_event(
+        "opportunity_updated",
+        {
+            "opportunity_id": str(opp.id),
+            "project_id": str(opp.project_id) if opp.project_id else None,
+            "production_house_id": str(ph.id),
+            "status": opp.status,
+        },
+    )
     return opp
 
 
@@ -249,8 +269,18 @@ async def delete_opportunity(
             detail="Opportunity not found or you do not have permission to delete it.",
         )
 
+    opp_id = opp.id
+    project_id = opp.project_id
     await db.delete(opp)
     await db.commit()
+    realtime_pooler.trigger_event(
+        "opportunity_deleted",
+        {
+            "opportunity_id": str(opp_id),
+            "project_id": str(project_id) if project_id else None,
+            "production_house_id": str(ph.id),
+        },
+    )
     return None
 
 
@@ -314,4 +344,13 @@ async def update_opportunity_status(
     opp.status = status_in.status
     await db.commit()
     await db.refresh(opp)
+    realtime_pooler.trigger_event(
+        "opportunity_updated",
+        {
+            "opportunity_id": str(opp.id),
+            "project_id": str(opp.project_id) if opp.project_id else None,
+            "production_house_id": str(ph.id),
+            "status": opp.status,
+        },
+    )
     return opp

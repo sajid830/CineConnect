@@ -1,7 +1,11 @@
+
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cineconnect/app/theme.dart';
 import 'package:cineconnect/features/production_house/data/models/application.dart';
+import 'package:cineconnect/core/services/realtime_events_service.dart';
+import 'package:cineconnect/core/utils/formatters.dart';
 import 'package:cineconnect/features/production_house/data/models/opportunity.dart';
 import 'package:cineconnect/shared/widgets/async_body.dart';
 import 'package:cineconnect/shared/widgets/empty_state.dart';
@@ -9,14 +13,57 @@ import 'package:cineconnect/features/production_house/opportunities/opportunitie
 import 'application_card.dart';
 import 'applications_provider.dart';
 
-class ApplicationsPage extends ConsumerWidget {
+class ApplicationsPage extends ConsumerStatefulWidget {
   const ApplicationsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ApplicationsPage> createState() =>
+      _ApplicationsPageState();
+}
+
+class _ApplicationsPageState extends ConsumerState<ApplicationsPage> {
+  Timer? _liveSyncTimer;
+  StreamSubscription<Map<String, dynamic>>? _realtimeSub;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final realtime = ref.read(realtimeEventsServiceProvider);
+    realtime.connect();
+
+    _realtimeSub = realtime.releaseOrApplicationEventsStream.listen((data) {
+      if (!mounted) return;
+
+      final event = data['event']?.toString() ?? '';
+
+      if (event.startsWith('application_') ||
+          event.startsWith('opportunity_')) {
+        ref.invalidate(applicationsProvider);
+        ref.invalidate(opportunitiesProvider);
+      }
+    });
+
+    _liveSyncTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted) return;
+      ref.invalidate(applicationsProvider);
+      ref.invalidate(opportunitiesProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _realtimeSub?.cancel();
+    _liveSyncTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final filter = ref.watch(applicationFilterProvider);
     final notifier = ref.read(applicationFilterProvider.notifier);
     final applicationsAsync = ref.watch(filteredApplicationsProvider);
+
     final opportunities = ref.watch(opportunitiesProvider).maybeWhen(
           data: (list) => list,
           orElse: () => <Opportunity>[],

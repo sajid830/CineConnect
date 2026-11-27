@@ -138,6 +138,12 @@ class ApiEndpoints {
     return '$wsBase/ws/chat?token=$token';
   }
 
+  static String webSocketEvents(String token) {
+    final cleanBase = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final wsBase = cleanBase.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://');
+    return '$wsBase/ws/events?token=$token&ngrok-skip-browser-warning=true';
+  }
+
   // ==========================================
   // 12. Search & Notifications
   // ==========================================

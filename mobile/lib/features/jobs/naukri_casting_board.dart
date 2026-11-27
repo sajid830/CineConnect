@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cineconnect/app/theme.dart';
 import '../../core/models/craft_models.dart';
 import '../../core/services/media_upload_service.dart';
+import '../../core/services/realtime_events_service.dart';
 import '../../core/state/app_state.dart';
 
 class NaukriCastingBoard extends StatefulWidget {

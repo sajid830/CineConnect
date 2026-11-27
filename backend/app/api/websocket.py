@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import AsyncSessionLocal
 from app.core.security import verify_supabase_jwt
 from app.models.message import Message
-
+from app.services.realtime import realtime_pooler
 
 class ConnectionManager:
     """Manages active WebSocket connections mapped by user ID."""
@@ -142,3 +142,55 @@ async def chat_websocket_endpoint(websocket: WebSocket, token: str = None):
         manager.disconnect(user_id, websocket)
     except Exception:
         manager.disconnect(user_id, websocket)
+
+
+async def _authenticate_ws_user(websocket: WebSocket, token: str = None) -> uuid.UUID | None:
+    """Authenticates a WebSocket connection via Supabase JWT token."""
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return None
+
+    payload = await verify_supabase_jwt(token)
+    if not payload:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return None
+
+    sub = payload.get("sub")
+    if not sub:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return None
+
+    try:
+        return uuid.UUID(sub)
+    except ValueError:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return None
+
+
+async def events_websocket_endpoint(websocket: WebSocket, token: str = None):
+    """WebSocket endpoint for real-time asynchronous job, project, and application events."""
+    user_id = await _authenticate_ws_user(websocket, token)
+    if user_id is None:
+        return
+
+    await realtime_pooler.connect(user_id, websocket)
+    await websocket.send_text(json.dumps({
+        "event": "connected",
+        "user_id": str(user_id),
+        "status": "listening",
+    }))
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                msg_payload = json.loads(data)
+            except Exception:
+                continue
+
+            if isinstance(msg_payload, dict) and msg_payload.get("type") == "ping":
+                await websocket.send_text(json.dumps({"type": "pong"}))
+    except WebSocketDisconnect:
+        realtime_pooler.disconnect(user_id, websocket)
+    except Exception:
+        realtime_pooler.disconnect(user_id, websocket)

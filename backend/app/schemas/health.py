@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
 
 
@@ -20,6 +20,7 @@ class DatabaseHealthResponse(BaseModel):
     status: str = Field(..., json_schema_extra={"example": "healthy"})
     database: str = Field(..., json_schema_extra={"example": "connected"})
     latency_ms: Optional[float] = Field(None, json_schema_extra={"example": 1.25})
+    pool: Optional[Dict[str, Any]] = None
 
 
 class DatabaseUnhealthyResponse(BaseModel):

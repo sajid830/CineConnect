@@ -2,13 +2,14 @@ import logging
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.api.dependencies import get_current_user, require_talent, require_production_house
 from app.models.user import User
-from app.models.production_house import ProductionHouse
+from app.models.production_house import ProductionHouse, Project
 from app.models.opportunity import Opportunity, Application
 from app.schemas.application import (
     ApplicationCreate,
@@ -26,6 +27,7 @@ from app.services.storage import (
     count_application_media_references,
     acquire_media_advisory_locks,
 )
+from app.services.realtime import realtime_pooler
 
 logger = logging.getLogger("cineconnect.applications")
 
@@ -43,6 +45,15 @@ def to_authorized_application_response(
     res = ApplicationResponse.model_validate(app)
     if is_ph and res.status == "submitted":
         res.status = "received"
+
+    if app.project_id:
+        res.target_type = "project"
+        if "project" in app.__dict__ and app.project:
+            res.project_title = app.project.title
+    elif app.opportunity_id:
+        res.target_type = "job"
+        if "opportunity" in app.__dict__ and app.opportunity:
+            res.opportunity_title = app.opportunity.title
 
     # Dynamically sign private storage URLs for authorized user
     if res.resume_url:
@@ -66,7 +77,7 @@ async def check_application_access(
     db: AsyncSession,
 ) -> Application:
     """Verifies that current_user is either the Talent owner of the application
-    or the Production House owner of the opportunity associated with the application.
+    or the Production House owner of the opportunity/project associated with the application.
     Returns the Application record if authorized, otherwise raises HTTPException.
     """
     result = await db.execute(select(Application).where(Application.id == application_id))
@@ -78,19 +89,50 @@ async def check_application_access(
     if app_record.talent_id == current_user.id:
         return app_record
 
-    # Production House owner access
-    opp_res = await db.execute(select(Opportunity).where(Opportunity.id == app_record.opportunity_id))
-    opp = opp_res.scalar_one_or_none()
-    if opp:
-        ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == opp.production_house_id))
-        ph = ph_res.scalar_one_or_none()
-        if ph and ph.user_id == current_user.id:
-            return app_record
+    # Production House owner access via Opportunity
+    if app_record.opportunity_id:
+        opp_res = await db.execute(select(Opportunity).where(Opportunity.id == app_record.opportunity_id))
+        opp = opp_res.scalar_one_or_none()
+        if opp:
+            ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == opp.production_house_id))
+            ph = ph_res.scalar_one_or_none()
+            if ph and ph.user_id == current_user.id:
+                return app_record
+
+    # Production House owner access via Project
+    if app_record.project_id:
+        proj_res = await db.execute(select(Project).where(Project.id == app_record.project_id))
+        proj = proj_res.scalar_one_or_none()
+        if proj:
+            ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == proj.production_house_id))
+            ph = ph_res.scalar_one_or_none()
+            if ph and ph.user_id == current_user.id:
+                return app_record
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="You do not have permission to access private files for this application.",
     )
+
+
+async def _resolve_target_ph_user_id(
+    db: AsyncSession,
+    opportunity_id: Optional[uuid.UUID] = None,
+    project_id: Optional[uuid.UUID] = None,
+) -> Optional[uuid.UUID]:
+    """Resolves the Production House owner's user_id for real-time application event delivery."""
+    ph_id: Optional[uuid.UUID] = None
+    if opportunity_id:
+        opp_res = await db.execute(select(Opportunity.production_house_id).where(Opportunity.id == opportunity_id))
+        ph_id = opp_res.scalar_one_or_none()
+    elif project_id:
+        proj_res = await db.execute(select(Project.production_house_id).where(Project.id == project_id))
+        ph_id = proj_res.scalar_one_or_none()
+
+    if not ph_id:
+        return None
+    ph_res = await db.execute(select(ProductionHouse.user_id).where(ProductionHouse.id == ph_id))
+    return ph_res.scalar_one_or_none()
 
 
 @router.post("/", response_model=ApplicationResponse, status_code=status.HTTP_201_CREATED)
@@ -99,36 +141,56 @@ async def submit_application(
     current_user: User = Depends(require_talent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Submit an application to an open opportunity (Talent only)."""
-    # 1. Verify opportunity exists and is open
-    opp_res = await db.execute(select(Opportunity).where(Opportunity.id == app_in.opportunity_id))
-    opp = opp_res.scalar_one_or_none()
-    if not opp:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found")
-    if opp.status != "open":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"This opportunity is currently {opp.status} and is not accepting applications.",
-        )
+    """Submit an application to an open opportunity or project (Talent only)."""
+    # 1. Target validation
+    if app_in.opportunity_id:
+        opp_res = await db.execute(select(Opportunity).where(Opportunity.id == app_in.opportunity_id))
+        opp = opp_res.scalar_one_or_none()
+        if not opp:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity / Job not found")
+        if opp.status != "open":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"This job is currently {opp.status} and is not accepting applications.",
+            )
 
-    # 2. Check for duplicate application
-    existing_res = await db.execute(
-        select(Application).where(
-            Application.opportunity_id == app_in.opportunity_id,
-            Application.talent_id == current_user.id,
+        # Check duplicate
+        existing_res = await db.execute(
+            select(Application).where(
+                Application.opportunity_id == app_in.opportunity_id,
+                Application.talent_id == current_user.id,
+            )
         )
-    )
-    if existing_res.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="You have already submitted an application for this opportunity.",
-        )
+        if existing_res.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="You have already submitted an application for this job.",
+            )
 
-    # 3. Acquire advisory locks in deterministic sorted order before validating and attaching
+    elif app_in.project_id:
+        proj_res = await db.execute(select(Project).where(Project.id == app_in.project_id))
+        proj = proj_res.scalar_one_or_none()
+        if not proj:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+        # Check duplicate
+        existing_res = await db.execute(
+            select(Application).where(
+                Application.project_id == app_in.project_id,
+                Application.talent_id == current_user.id,
+            )
+        )
+        if existing_res.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="You have already submitted an application for this project.",
+            )
+
+    # 2. Acquire advisory locks in deterministic sorted order before validating and attaching
     candidate_media = [app_in.resume_url, app_in.reel_url]
     await acquire_media_advisory_locks(db, candidate_media)
 
-    # 4. Validate media ownership and existence for private files while lock is held
+    # 3. Validate media ownership and existence for private files while lock is held
     checked_storage_keys = set()
     if app_in.resume_url:
         validate_talent_media_ownership(
@@ -147,6 +209,7 @@ async def submit_application(
 
     application = Application(
         opportunity_id=app_in.opportunity_id,
+        project_id=app_in.project_id,
         talent_id=current_user.id,
         cover_letter=app_in.cover_letter,
         resume_url=app_in.resume_url,
@@ -157,6 +220,22 @@ async def submit_application(
     await db.commit()
     await db.refresh(application)
     application.talent = current_user
+
+    ph_user_id = await _resolve_target_ph_user_id(
+        db,
+        opportunity_id=application.opportunity_id,
+        project_id=application.project_id,
+    )
+    realtime_pooler.trigger_event(
+        "application_created",
+        {
+            "application_id": str(application.id),
+            "opportunity_id": str(application.opportunity_id) if application.opportunity_id else None,
+            "project_id": str(application.project_id) if application.project_id else None,
+            "status": application.status,
+        },
+        target_user_ids=[current_user.id, ph_user_id],
+    )
     return to_authorized_application_response(application, is_ph=False)
 
 
@@ -164,12 +243,20 @@ async def submit_application(
 async def list_my_applications(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by application status"),
     skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=100),
     current_user: User = Depends(require_talent),
     db: AsyncSession = Depends(get_db),
 ):
     """List applications submitted by the logged-in talent user."""
-    stmt = select(Application).where(Application.talent_id == current_user.id)
+    stmt = (
+        select(Application)
+        .where(Application.talent_id == current_user.id)
+        .options(
+            selectinload(Application.opportunity),
+            selectinload(Application.project),
+            selectinload(Application.talent),
+        )
+    )
     if status_filter:
         stmt = stmt.where(Application.status == status_filter)
     stmt = stmt.order_by(Application.created_at.desc()).offset(skip).limit(limit)
@@ -181,9 +268,11 @@ async def list_my_applications(
 @router.get("/", response_model=List[ApplicationResponse])
 async def list_applications_for_production_house(
     opportunity_id: Optional[uuid.UUID] = Query(None, description="Filter by opportunity ID"),
+    project_id: Optional[uuid.UUID] = Query(None, description="Filter by project ID"),
+    target_type: Optional[str] = Query(None, description="Filter by target type: 'project' or 'job'"),
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
     skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=100),
     current_user: User = Depends(require_production_house),
     db: AsyncSession = Depends(get_db),
 ):
@@ -193,14 +282,31 @@ async def list_applications_for_production_house(
     if not ph:
         return []
 
-    # Join Application with Opportunity to filter only this PH's opportunities
     stmt = (
         select(Application)
-        .join(Opportunity, Application.opportunity_id == Opportunity.id)
-        .where(Opportunity.production_house_id == ph.id)
+        .outerjoin(Opportunity, Application.opportunity_id == Opportunity.id)
+        .outerjoin(Project, Application.project_id == Project.id)
+        .where(
+            or_(
+                Opportunity.production_house_id == ph.id,
+                Project.production_house_id == ph.id,
+            )
+        )
+        .options(
+            selectinload(Application.talent),
+            selectinload(Application.opportunity),
+            selectinload(Application.project),
+        )
     )
+    if project_id:
+        stmt = stmt.where(Application.project_id == project_id)
     if opportunity_id:
         stmt = stmt.where(Application.opportunity_id == opportunity_id)
+    if target_type == "project":
+        stmt = stmt.where(Application.project_id != None)
+    elif target_type in ("job", "opportunity"):
+        stmt = stmt.where(Application.opportunity_id != None)
+
     if status_filter:
         if status_filter.lower() in ("received", "submitted"):
             stmt = stmt.where(Application.status.in_(["submitted", "received"]))
@@ -230,13 +336,24 @@ async def get_application(
         return to_authorized_application_response(app_record, is_ph=False)
 
     # If user is production house owner of the opportunity
-    opp_res = await db.execute(select(Opportunity).where(Opportunity.id == app_record.opportunity_id))
-    opp = opp_res.scalar_one_or_none()
-    if opp:
-        ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == opp.production_house_id))
-        ph = ph_res.scalar_one_or_none()
-        if ph and ph.user_id == current_user.id:
-            return to_authorized_application_response(app_record, is_ph=True)
+    if app_record.opportunity_id:
+        opp_res = await db.execute(select(Opportunity).where(Opportunity.id == app_record.opportunity_id))
+        opp = opp_res.scalar_one_or_none()
+        if opp:
+            ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == opp.production_house_id))
+            ph = ph_res.scalar_one_or_none()
+            if ph and ph.user_id == current_user.id:
+                return to_authorized_application_response(app_record, is_ph=True)
+
+    # If user is production house owner of the project
+    if app_record.project_id:
+        proj_res = await db.execute(select(Project).where(Project.id == app_record.project_id))
+        proj = proj_res.scalar_one_or_none()
+        if proj:
+            ph_res = await db.execute(select(ProductionHouse).where(ProductionHouse.id == proj.production_house_id))
+            ph = ph_res.scalar_one_or_none()
+            if ph and ph.user_id == current_user.id:
+                return to_authorized_application_response(app_record, is_ph=True)
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -393,6 +510,21 @@ async def update_application(
             )
 
     app_record.talent = current_user
+    ph_user_id = await _resolve_target_ph_user_id(
+        db,
+        opportunity_id=app_record.opportunity_id,
+        project_id=app_record.project_id,
+    )
+    realtime_pooler.trigger_event(
+        "application_updated",
+        {
+            "application_id": str(app_record.id),
+            "opportunity_id": str(app_record.opportunity_id) if app_record.opportunity_id else None,
+            "project_id": str(app_record.project_id) if app_record.project_id else None,
+            "status": app_record.status,
+        },
+        target_user_ids=[current_user.id, ph_user_id],
+    )
     return to_authorized_application_response(app_record, is_ph=False)
 
 
@@ -416,14 +548,31 @@ async def withdraw_application(
             detail="Application not found or you do not have permission to withdraw it.",
         )
 
-    # 1. Capture media references before deleting the DB record
+    # 1. Capture media references and targets before deleting the DB record
     old_media_urls = [app_record.resume_url, app_record.reel_url]
+    opp_id = app_record.opportunity_id
+    proj_id = app_record.project_id
+    ph_user_id = await _resolve_target_ph_user_id(
+        db,
+        opportunity_id=opp_id,
+        project_id=proj_id,
+    )
 
     # 2. Delete database record
     await db.delete(app_record)
 
     # 3. Commit database transaction first
     await db.commit()
+
+    realtime_pooler.trigger_event(
+        "application_withdrawn",
+        {
+            "application_id": str(application_id),
+            "opportunity_id": str(opp_id) if opp_id else None,
+            "project_id": str(proj_id) if proj_id else None,
+        },
+        target_user_ids=[current_user.id, ph_user_id],
+    )
 
     # 4. Perform reference-safe cleanup only after successful commit
     try:
@@ -489,4 +638,14 @@ async def update_application_status(
     await db.refresh(app_record)
     talent_res = await db.execute(select(User).where(User.id == app_record.talent_id))
     app_record.talent = talent_res.scalar_one_or_none()
+    realtime_pooler.trigger_event(
+        "application_status_updated",
+        {
+            "application_id": str(app_record.id),
+            "opportunity_id": str(app_record.opportunity_id) if app_record.opportunity_id else None,
+            "project_id": str(app_record.project_id) if app_record.project_id else None,
+            "status": app_record.status,
+        },
+        target_user_ids=[current_user.id, app_record.talent_id],
+    )
     return to_authorized_application_response(app_record, is_ph=True)

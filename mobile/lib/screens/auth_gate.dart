@@ -6,6 +6,7 @@ import 'package:cineconnect/app/theme.dart';
 import 'package:cineconnect/core/auth/password_recovery_client.dart';
 import 'package:cineconnect/core/network/api_client.dart';
 import 'package:cineconnect/core/network/api_endpoints.dart';
+import 'package:cineconnect/core/services/realtime_events_service.dart';
 import 'package:cineconnect/core/utils/web_tab_sync.dart';
 import 'package:cineconnect/features/talent/presentation/talent_portal_screen.dart';
 import 'package:cineconnect/features/production_house/dashboard/dashboard_screen.dart';
@@ -153,6 +154,7 @@ class _AuthGateState extends State<AuthGate> {
           case AuthChangeEvent.mfaChallengeVerified:
             if (token != null && token.isNotEmpty) {
               ApiClient.setGlobalAuthToken(token);
+              RealtimeEventsService.instance.connect();
             }
             if (session != null &&
                 !isPendingEmailVerification() &&
@@ -164,6 +166,7 @@ class _AuthGateState extends State<AuthGate> {
             break;
           case AuthChangeEvent.signedOut:
             ApiClient.clearGlobalAuthToken();
+            RealtimeEventsService.instance.disconnect();
             if (mounted) {
               setState(() {
                 _isPasswordRecovery = false;
@@ -179,6 +182,7 @@ class _AuthGateState extends State<AuthGate> {
           case AuthChangeEvent.passwordRecovery:
             if (token != null && token.isNotEmpty) {
               ApiClient.setGlobalAuthToken(token);
+              RealtimeEventsService.instance.connect();
             }
             // 1. Immediately activate the in-memory recovery guard
             _isPasswordRecovery = true;

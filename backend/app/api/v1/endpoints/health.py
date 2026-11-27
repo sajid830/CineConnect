@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.db.session import get_db
+from app.db.session import get_db, get_pool_status
 from app.schemas.health import (
     DetailedHealthResponse,
     DatabaseHealthResponse,
@@ -57,6 +57,7 @@ async def check_database_health(db: AsyncSession = Depends(get_db)):
                 status="healthy",
                 database="connected",
                 latency_ms=latency_ms,
+                pool=get_pool_status(),
             )
         else:
             logger.warning("Database query executed but returned unexpected result.")

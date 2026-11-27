@@ -8,11 +8,13 @@ from fastapi.openapi.utils import get_openapi
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.api import api_router
-from app.api.websocket import chat_websocket_endpoint
+from app.api.websocket import chat_websocket_endpoint, events_websocket_endpoint
 from app.core.config import settings
 from app.core.logging import logger
 from app.db.init_db import init_db
+from app.db.session import dispose_pool
 from app.schemas.health import HealthResponse
+from app.services.realtime import realtime_pooler
 
 
 @asynccontextmanager
@@ -39,7 +41,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"MinIO bucket initialization deferred: {e}")
 
+    # Start asynchronous realtime event pooler
+    realtime_pooler.start()
+
     yield
+
+    # Stop realtime event pooler
+    await realtime_pooler.stop()
 
     # Clean up asynchronous HTTP client on shutdown
     try:
@@ -47,6 +55,9 @@ async def lifespan(app: FastAPI):
         await jwk_manager.aclose()
     except Exception as e:
         logger.warning(f"Error closing JWK manager client: {e}")
+
+    # Dispose pooled PostgreSQL connections cleanly
+    await dispose_pool()
 
     logger.info(f"Shutting down {settings.APP_NAME}...")
 
@@ -156,6 +167,13 @@ async def root_health() -> HealthResponse:
 async def websocket_chat_route(websocket: WebSocket, token: Optional[str] = Query(None)):
     """WebSocket endpoint for real-time direct chat."""
     await chat_websocket_endpoint(websocket, token)
+
+
+# Real-Time Events WebSocket Endpoint (Jobs, Projects, Applications)
+@app.websocket("/ws/events")
+async def websocket_events_route(websocket: WebSocket, token: Optional[str] = Query(None)):
+    """WebSocket endpoint for real-time asynchronous release and application updates."""
+    await events_websocket_endpoint(websocket, token)
 
 
 # Include API v1 Router

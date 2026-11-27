@@ -50,11 +50,18 @@ class Settings(BaseSettings):
     DATABASE_URL: Union[str, None] = None
     TEST_DATABASE_URL: Union[str, None] = None
 
+  
     # Connection Pool Settings
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 1800
+    DB_POOL_USE_LIFO: bool = True
+    DB_COMMAND_TIMEOUT: int = 30
+    DB_POOL_WARMUP_CONNECTIONS: int = 2
+
+    # Real-Time Async Event Stream Timing
+    REALTIME_HEARTBEAT_SECONDS: int = 15
 
     # Supabase Authentication & JWT
     SUPABASE_URL: str = "https://your-project.supabase.co"

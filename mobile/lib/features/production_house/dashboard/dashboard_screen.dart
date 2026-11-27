@@ -1,21 +1,28 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cineconnect/core/services/realtime_events_service.dart';
 import 'package:cineconnect/features/production_house/applications/applications_page.dart';
+import 'package:cineconnect/features/production_house/applications/applications_provider.dart';
 import 'package:cineconnect/features/production_house/home/home_page.dart';
 import 'package:cineconnect/features/production_house/notifications/notification_bell.dart';
 import 'package:cineconnect/features/production_house/opportunities/opportunities_page.dart';
+import 'package:cineconnect/features/production_house/opportunities/opportunities_provider.dart';
 import 'package:cineconnect/features/production_house/projects/projects_page.dart';
+import 'package:cineconnect/features/production_house/projects/projects_provider.dart';
 import 'package:cineconnect/features/production_house/talent_discovery/talent_page.dart';
 
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _selectedIndex = 0;
+  StreamSubscription<Map<String, dynamic>>? _realtimeSub;
 
   static const _titles = [
     'CineConnect',
@@ -25,7 +32,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'Talent',
   ];
 
-  void _openTab(int index) => setState(() => _selectedIndex = index);
+  void _openTab(int index) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    setState(() => _selectedIndex = index);
+  }
+
+  @override
+  void dispose() {
+    _realtimeSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -5,11 +5,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/craft_models.dart';
 import '../network/api_client.dart';
 import '../services/chat_service.dart';
+import '../services/realtime_events_service.dart';
 import '../services/talent_api_service.dart';
 import '../../features/production_house/data/models/portfolio_item.dart';
 
 class CineAppState extends ChangeNotifier {
   final TalentApiService _apiService;
+  final RealtimeEventsService _realtimeService;
 
   int _activeNavIndex = 0; // 0: Home/Feed, 1: Discover/Reels, 2: Opportunities/Jobs, 3: Network/Radar, 4: Slate/Profile
   OnSetStory? _activeViewedStory;
@@ -97,11 +99,16 @@ class CineAppState extends ChangeNotifier {
   bool get isLoadingPortfolio => _isLoadingPortfolio;
   String? get portfolioError => _portfolioError;
 
-  CineAppState({TalentApiService? apiService, bool autoCheckConnectivity = true})
-      : _apiService = apiService ?? TalentApiService() {
+  CineAppState({
+    TalentApiService? apiService,
+    RealtimeEventsService? realtimeService,
+    bool autoCheckConnectivity = true,
+  })  : _apiService = apiService ?? TalentApiService(),
+        _realtimeService = realtimeService ?? RealtimeEventsService.instance {
     myProfile = _buildFallbackTalentProfile();
     if (autoCheckConnectivity) {
       _initConnectivityCheck();
+      _initRealtimeEvents();
       loadOpportunities();
       loadNotifications();
       loadMyProfile();
@@ -113,7 +120,49 @@ class CineAppState extends ChangeNotifier {
       loadConnectionRequests();
     }
   }
+  Timer? _backgroundSyncTimer;
+  StreamSubscription? _realtimeEventsSub;
+  Future<void>? _opportunitiesInFlight;
 
+  void _initRealtimeEvents() {
+    _realtimeService.connect();
+    _realtimeEventsSub?.cancel();
+
+    _realtimeEventsSub = _realtimeService
+        .releaseOrApplicationEventsStream
+        .listen((data) {
+      final evt = data['event']?.toString() ?? '';
+
+      if (evt.startsWith('opportunity_') ||
+          evt.startsWith('application_')) {
+        loadOpportunities(forceRefresh: true, silent: true);
+      }
+    });
+  }
+
+  void _startPeriodicSync() {
+    _backgroundSyncTimer?.cancel();
+
+    _backgroundSyncTimer =
+        Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (ApiClient.currentUserId != null) {
+        try {
+          final unreadRes = await _apiService.getUnreadNotificationCount();
+
+          if (unreadRes is Map<String, dynamic> &&
+              unreadRes['unread_count'] is num) {
+            final newCount =
+                (unreadRes['unread_count'] as num).toInt();
+
+            if (_serverUnreadCount != newCount) {
+              _serverUnreadCount = newCount;
+              await loadNotifications(forceRefresh: true);
+            }
+          }
+        } catch (_) {}
+      }
+    });
+  }
   Future<void> _initConnectivityCheck() async {
     _isBackendConnected = await _apiService.checkBackendHealth();
     notifyListeners();
@@ -688,36 +737,80 @@ class CineAppState extends ChangeNotifier {
     }
   }
 
-  /// Fetches real opportunities from FastAPI and PostgreSQL.
-  /// Falls back to verified offline sample data if the backend is unreachable or offline.
-  Future<void> loadOpportunities({String? craft, String? hub, int page = 1, bool forceRefresh = false}) async {
-    _isLoadingOpportunities = true;
-    _opportunitiesError = null;
-    notifyListeners();
+  /// Fetches real opportunities from FastAPI and PostgreSQL concurrently with application statuses.
+  /// Falls back cleanly on network errors without wiping known local applied state.
+  Future<void> loadOpportunities({
+    String? craft,
+    String? hub,
+    int page = 1,
+    bool forceRefresh = false,
+    bool silent = false,
+  }) async {
+    if (_opportunitiesInFlight != null) {
+      if (!forceRefresh) {
+        return _opportunitiesInFlight;
+      }
+      await _opportunitiesInFlight;
+    }
+
+    final future = _performLoadOpportunities(
+      craft: craft,
+      hub: hub,
+      page: page,
+      silent: silent,
+    );
+    _opportunitiesInFlight = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_opportunitiesInFlight, future)) {
+        _opportunitiesInFlight = null;
+      }
+    }
+  }
+
+  Future<void> _performLoadOpportunities({
+    String? craft,
+    String? hub,
+    int page = 1,
+    bool silent = false,
+  }) async {
+    if (!silent) {
+      _isLoadingOpportunities = true;
+      _opportunitiesError = null;
+      notifyListeners();
+    }
 
     try {
-      final res = await _apiService.getOpportunities(craft: craft, hub: hub, page: page);
+      dynamic res;
+      dynamic appsRes;
+      bool appsLookupSucceeded = false;
+
+      await Future.wait([
+        _apiService.getOpportunities(craft: craft, hub: hub, page: page).then((v) {
+          res = v;
+        }),
+        _apiService.getMyApplications().then((v) {
+          appsRes = v;
+          appsLookupSucceeded = v is List;
+        }).catchError((_) {
+          appsLookupSucceeded = false;
+        }),
+      ]);
 
       // Correlation: correlate user's applied status from getMyApplications
       final Set<String> appliedIds = {};
       final Map<String, ApplicationStatus> appStatuses = {};
-      bool appsLookupSucceeded = false;
-      try {
-        final appsRes = await _apiService.getMyApplications();
-        if (appsRes is List) {
-          appsLookupSucceeded = true;
-          for (final app in appsRes) {
-            if (app is Map<String, dynamic>) {
-              final oppId = app['opportunity_id']?.toString();
-              if (oppId != null && oppId.isNotEmpty) {
-                appliedIds.add(oppId);
-                appStatuses[oppId] = ProductionJobBrief.parseStatus(app['status']?.toString());
-              }
+      if (appsLookupSucceeded && appsRes is List) {
+        for (final app in appsRes as List) {
+          if (app is Map<String, dynamic>) {
+            final oppId = app['opportunity_id']?.toString();
+            if (oppId != null && oppId.isNotEmpty) {
+              appliedIds.add(oppId);
+              appStatuses[oppId] = ProductionJobBrief.parseStatus(app['status']?.toString());
             }
           }
         }
-      } catch (_) {
-        appsLookupSucceeded = false;
       }
       _hasApplicationsLookupFailed = !appsLookupSucceeded;
 
@@ -775,12 +868,15 @@ class CineAppState extends ChangeNotifier {
           _isUsingFallbackOpportunities = true;
         }
       }
-    } catch (e) {
+        } catch (e) {
       _opportunitiesError = e.toString();
+
       // On connection error, preserve existing or fall back to mock data
       if (jobBriefs.isEmpty) {
         jobBriefs = List.of(_fallbackJobBriefs);
         _isUsingFallbackOpportunities = true;
+      }
+        }
       }
     } finally {
       _isLoadingOpportunities = false;
@@ -2079,4 +2175,13 @@ class CineAppState extends ChangeNotifier {
       await sendConnectionRequest(talentId);
     }
   }
-}
+  @override
+  void dispose() {
+    _backgroundSyncTimer?.cancel();
+    _realtimeEventsSub?.cancel();
+    _chatWsSubscription?.cancel();
+    _chatConnSubscription?.cancel();
+    super.dispose();
+  }
+}  
+

@@ -1,19 +1,22 @@
 from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, require_production_house
 from app.db.session import get_db
 from app.models.user import User
 from app.models.production_house import ProductionHouse, Project
-from app.models.opportunity import Opportunity
+from app.models.opportunity import Opportunity, Application
 from app.models.social import Collaboration
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectPatch, ProjectResponse
 from app.schemas.opportunity import OpportunityResponse
 from app.schemas.collaboration import CollaborationResponse
 from app.api.v1.endpoints.collaborations import to_ph_collaboration_response
+from app.api.v1.endpoints.applications import to_ph_application_response
+from app.services.realtime import realtime_pooler
 
 router = APIRouter()
 
@@ -46,7 +49,16 @@ async def create_project(
     db.add(project)
     await db.commit()
     await db.refresh(project)
-    return project
+    project.production_house = house
+    realtime_pooler.trigger_event(
+        "project_updated",
+        {
+            "project_id": str(project.id),
+            "production_house_id": str(house.id),
+            "status": project.status,
+        },
+    )
+    return _enrich_project_response(project)
 
 
 @router.get("/my", response_model=List[ProjectResponse], summary="Get Current Production House Projects")
@@ -127,7 +139,16 @@ async def update_project(
 
     await db.commit()
     await db.refresh(project)
-    return project
+    project.production_house = house
+    realtime_pooler.trigger_event(
+        "project_updated",
+        {
+            "project_id": str(project.id),
+            "production_house_id": str(house.id),
+            "status": project.status,
+        },
+    )
+    return _enrich_project_response(project)
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse, summary="Update Selected Project Fields")
@@ -153,8 +174,20 @@ async def patch_project(
 
     await db.commit()
     await db.refresh(project)
-    return project
+    project.production_house = house
+    realtime_pooler.trigger_event(
+        "project_released",
+        {
+            "project_id": str(project.id),
+            "production_house_id": str(house.id),
+            "status": project.status,
+            "title": project.title,
+        },
+    )
 
+    # Important: Projects must not automatically appear in the Jobs section.
+    # Individual crew requirements are created explicitly under Jobs.
+    return _enrich_project_response(project, apps_count=0)
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete Project")
 async def delete_project(
@@ -172,8 +205,17 @@ async def delete_project(
     if not house or house.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not own this project.")
 
+    proj_id = project.id
+    house_id = house.id
     await db.delete(project)
     await db.commit()
+    realtime_pooler.trigger_event(
+        "project_deleted",
+        {
+            "project_id": str(proj_id),
+            "production_house_id": str(house_id),
+        },
+    )
     return None
 
 
